@@ -1,1 +1,77 @@
 
+ST-T1024 v1.4
+
+A Tile-Based Deterministic Inference Architecture
+with Fuzzy Routing and Hybrid FSM–Transformer 
+Execution for Energy-Constrained AI Systems
+
+
+
+Abstract
+ST-T1024 is a modular inference architecture designed for energy-constrained AI systems. The
+proposal partitions computation into independent tiles, activates only one tile per query, uses a
+Fuzzy Inference System (FIS) for routing, and combines Finite State Machines (FSMs) with tiny
+transformers inside each tile.
+
+
+
+1. Introduction
+The central motivation is the Energy Constraint Hypothesis: future AI capability may be constrained
+by energy availability, memory movement, and infrastructure costs. ST-T1024 attempts to reduce
+the active computational footprint per query.
+
+
+
+2. Architecture
+The architecture consists of N independent tiles. Only one tile is intended to be active for a given
+query, thereby reducing active silicon, memory accesses, and communication overhead.
+
+
+
+3. FIS Routing Layer
+A Fuzzy Inference System computes membership scores for each tile domain. The tile with the
+highest score is selected for execution.
+
+
+
+4. FSM–Tiny Transformer Tile
+Each tile contains an FSM controller, domain knowledge, local memory resources, and a
+lightweight transformer. The FSM provides deterministic orchestration while the transformer
+performs localized inference.
+
+
+
+5. Energy Model
+Symbolically: E_total = E_compute + E_memory + E_routing + E_idle. The proposal seeks to
+minimize the active energy expenditure associated with each query.
+
+
+
+6. WCET Considerations
+Worst-Case Execution Time constraints can be defined at tile level, supporting deterministic
+deployment scenarios.
+
+
+
+7. Potential Role in Surviving the Energy Wall
+If future AI systems become increasingly constrained by energy consumption, sparse activation
+strategies may offer one possible path toward improved efficiency. ST-T1024 is presented as a
+conceptual architecture in that direction.
+
+
+8. Limitations
+Routing overhead, domain partitioning challenges, memory duplication, cross-domain reasoning,
+and hardware implementation complexity remain important open questions.
+
+
+
+9. Related Work
+Relevant areas include Mixture-of-Experts architectures, sparse neural networks, quantized
+networks, fuzzy control systems, and deterministic real-time systems.
+
+
+10. License
+ST-T1024 is distributed under the Apache License 2.0.
+
+
+
