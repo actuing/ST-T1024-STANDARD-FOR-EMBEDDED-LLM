@@ -33,6 +33,14 @@ agent.repetition_penalty = 1.0  # No creative variation
 
 
 
+
+### Consider the following
+### correction of phase 0 :
+###  https://docs.google.com/document/d/111nyJy1L4c76U35NfSGw4EQjfG90xUuAAJY7nWqCSMc/edit?usp=drivesdk
+
+### Before any execution, the caller — not the agent — must enforce deterministic sampling parameters
+
+
 ________
 
 
