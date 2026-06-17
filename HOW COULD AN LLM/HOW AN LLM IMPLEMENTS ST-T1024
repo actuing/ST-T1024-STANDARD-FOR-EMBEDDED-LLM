@@ -1,0 +1,18 @@
+
+
+
+# HOW AN LLM IMPLEMENTS ST-T1024 V2.0
+
+## The 4 Phases (Blueprint)
+### Phase 0: Self-Modification
+### Phase 1: Token Shredding
+### Phase 2: ROM/SRAM Compilation
+### Phase 3: Ternary Quantization
+### Phase 4: WCET Enforcement
+
+## Complete Implementation
+[Full Python code - which already contains all 4 phases]
+
+## Quick Start
+```bash
+python st_t1024_v2.py
