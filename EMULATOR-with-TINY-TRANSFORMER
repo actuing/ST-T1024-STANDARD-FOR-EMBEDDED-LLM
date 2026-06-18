@@ -1,1 +1,516 @@
 
+
+Ternary FIS
+      ↓
+Deterministic FSM
+      ↓
+Independent Tile
+      ↓
+Tiny Transformer
+      ↓
+Response
+
+
+#!/usr/bin/env python3
+"""
+===========================================================
+ST-T1024 V2.0 IMPROVED
+Sovereign Deterministic Architecture Emulator
+
+ARCHITECTURE
+===========================================================
+
+                     USER QUERY
+                          │
+                          ▼
+                   TERNARY FIS
+            (Domain Classification)
+                          │
+                          ▼
+                     DOMAIN_ID
+                          │
+                          ▼
+                DETERMINISTIC FSM
+                 (Sovereign Core)
+                          │
+         ┌────────────────┼────────────────┐
+         │                │                │
+         ▼                ▼                ▼
+
+   PHYSICS TILE      LAW TILE       MATH TILE
+         │                │                │
+         ▼                ▼                ▼
+
+   Tiny Transformer Tiny Transformer Tiny Transformer
+         │                │                │
+         ▼                ▼                ▼
+
+      Tile ROM         Tile ROM        Tile ROM
+      Tile SRAM        Tile SRAM       Tile SRAM
+
+         └────────────────┼────────────────┘
+                          │
+                          ▼
+                    FSM VERIFY
+                          │
+                          ▼
+                    POWER DOWN
+                          │
+                          ▼
+                       OUTPUT
+
+===========================================================
+DESIGN RULES
+===========================================================
+
+1. Ternary FIS is responsible only for:
+   - Domain selection
+   - Ambiguity detection
+   - Domain_ID generation
+
+2. Deterministic FSM is sovereign:
+   - State transitions
+   - WCET enforcement
+   - Tile activation
+   - Power management
+   - Memory access control
+   - Error handling
+
+3. Tiles are independent:
+   - Independent Tiny Transformer
+   - Independent ROM
+   - Independent SRAM
+   - Independent vocabulary
+
+4. Only ONE tile executes per query.
+
+5. No global transformer exists.
+
+6. No cross-tile inference during execution.
+
+7. Universal axioms may be duplicated
+   across all tiles (Redundancy Rule).
+
+8. Upon completion:
+      Tile → 0V Power Down
+
+===========================================================
+EXECUTION FLOW
+===========================================================
+
+Query
+  ↓
+Ternary FIS
+  ↓
+Domain_ID
+  ↓
+Deterministic FSM
+  ↓
+Activate Tile
+  ↓
+Run Tiny Transformer
+  ↓
+Verify WCET
+  ↓
+Power Down Tile
+  ↓
+Response
+
+===========================================================
+EMULATOR STATUS
+===========================================================
+
+This software emulates the architectural concepts of
+ST-T1024 V2.0 Improved.
+
+Implemented:
+- Ternary FIS
+- Deterministic FSM
+- Independent Tiles
+- Tile-local Tiny Transformer
+- ROM/SRAM separation
+- Tile power management
+
+Not implemented:
+- Real transformer training
+- Real ternary attention
+- ASIC timing validation
+- 3-year tile discovery cycle
+- Production-scale datasets
+
+===========================================================
+"""
+
+
+
+
+#!/usr/bin/env python3
+
+from typing import Dict, List, Optional
+
+# =====================================================
+# TERNARY FIS
+# =====================================================
+
+class TernaryFIS:
+
+    def __init__(self):
+
+        self.rules = {
+
+            "PHYSICS": [
+                "energy",
+                "force",
+                "heat",
+                "entropy",
+                "thermodynamics"
+            ],
+
+            "LAW": [
+                "law",
+                "constitution",
+                "rights",
+                "governance",
+                "sovereignty"
+            ],
+
+            "MATH": [
+                "equation",
+                "theorem",
+                "proof",
+                "calculus",
+                "mathematics"
+            ]
+        }
+
+    def infer(self, query:str):
+
+        q = query.lower()
+
+        scores = {}
+
+        for domain, keywords in self.rules.items():
+
+            count = sum(
+                1 for kw in keywords
+                if kw in q
+            )
+
+            if count >= 2:
+                scores[domain] = 1
+
+            elif count == 1:
+                scores[domain] = 0
+
+            else:
+                scores[domain] = -1
+
+        best = max(scores, key=scores.get)
+
+        if scores[best] <= 0:
+            return None
+
+        return best
+
+
+
+
+
+
+# =====================================================
+# FSM
+# =====================================================
+
+class DeterministicFSM:
+
+    STATES = [
+
+        "IDLE",
+
+        "TRIAGE",
+
+        "ACTIVATE_TILE",
+
+        "RUN_TRANSFORMER",
+
+        "VERIFY",
+
+        "POWER_DOWN",
+
+        "ERROR"
+    ]
+
+    def __init__(self):
+
+        self.state = "IDLE"
+
+        self.cycles = 0
+
+        self.max_cycles = 400
+
+    def transition(self, state):
+
+        self.cycles += 1
+
+        if self.cycles > self.max_cycles:
+
+            self.state = "ERROR"
+
+            raise RuntimeError("WCET VIOLATION")
+
+        self.state = state
+
+
+
+
+
+# =====================================================
+# TINY TRANSFORMER
+# =====================================================
+
+class TinyTransformer:
+
+    """
+    Emulator only.
+
+    Represents a small domain-specific transformer.
+    """
+
+    def __init__(self,
+                 domain:str,
+                 vocabulary:List[str]):
+
+        self.domain = domain
+
+        self.vocabulary = set(vocabulary)
+
+    def tokenize(self,
+                 query:str):
+
+        return [
+
+            token
+
+            for token in query.lower().split()
+
+            if token in self.vocabulary
+        ]
+
+    def forward(self,
+                query:str):
+
+        tokens = self.tokenize(query)
+
+        return {
+
+            "domain": self.domain,
+
+            "tokens": tokens,
+
+            "token_count": len(tokens)
+        }
+
+
+
+
+
+
+
+# =====================================================
+# TILE
+# =====================================================
+
+class Tile:
+
+    def __init__(self,
+                 domain,
+                 vocabulary,
+                 rom):
+
+        self.domain = domain
+
+        self.powered = False
+
+        self.rom = rom
+
+        self.sram = {}
+
+        self.transformer = TinyTransformer(
+            domain,
+            vocabulary
+        )
+
+    def power_on(self):
+
+        self.powered = True
+
+    def power_off(self):
+
+        self.powered = False
+
+        self.sram.clear()
+
+    def execute(self,
+                query):
+
+        if not self.powered:
+
+            raise RuntimeError(
+                "Tile not powered"
+            )
+
+        result = self.transformer.forward(
+            query
+        )
+
+        facts = list(self.rom.values())
+
+        return {
+
+            "transformer": result,
+
+            "facts": facts[:3]
+        }
+
+
+
+
+# =====================================================
+# ST-T1024 IMPROVED
+# =====================================================
+
+class STT1024:
+
+    def __init__(self):
+
+        self.fis = TernaryFIS()
+
+        self.fsm = DeterministicFSM()
+
+        self.tiles = {
+
+            "PHYSICS": Tile(
+
+                "PHYSICS",
+
+                [
+                    "energy",
+                    "force",
+                    "heat",
+                    "entropy",
+                    "thermodynamics"
+                ],
+
+                {
+                    "fact1":
+                    "Energy is conserved"
+                }
+            ),
+
+            "LAW": Tile(
+
+                "LAW",
+
+                [
+                    "law",
+                    "constitution",
+                    "rights"
+                ],
+
+                {
+                    "fact1":
+                    "Constitutions define authority"
+                }
+            ),
+
+            "MATH": Tile(
+
+                "MATH",
+
+                [
+                    "equation",
+                    "proof",
+                    "theorem"
+                ],
+
+                {
+                    "fact1":
+                    "A=A"
+                }
+            )
+        }
+
+    def run_query(self,
+                  query):
+
+        self.fsm.transition(
+            "TRIAGE"
+        )
+
+        domain = self.fis.infer(
+            query
+        )
+
+        if domain is None:
+
+            self.fsm.transition(
+                "ERROR"
+            )
+
+            return {
+
+                "status":"ERROR",
+
+                "error":"0x-AMBIG"
+            }
+
+        self.fsm.transition(
+            "ACTIVATE_TILE"
+        )
+
+        tile = self.tiles[domain]
+
+        tile.power_on()
+
+        self.fsm.transition(
+            "RUN_TRANSFORMER"
+        )
+
+        result = tile.execute(
+            query
+        )
+
+        self.fsm.transition(
+            "VERIFY"
+        )
+
+        self.fsm.transition(
+            "POWER_DOWN"
+        )
+
+        tile.power_off()
+
+        return {
+
+            "status":"SUCCESS",
+
+            "domain":domain,
+
+            "cycles":self.fsm.cycles,
+
+            "result":result
+        }
+
+
+
+...
+
+
+
+
+
+
+
+
+
+
