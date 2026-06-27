@@ -337,6 +337,18 @@ Energy: 0.5 J (135× higher)
 Power: 10W (10× higher)
 ```
 
+
+
+
+Note: This baseline assumes a 7B parameter FP16 model running on NPU (on-device deployment).
+For cloud FP32 comparison, see the companion Energy Audit document.
+
+
+
+
+
+
+
 5.2 Direct Comparison
 
 Metric ST-T1024 Standard Transformer Improvement
