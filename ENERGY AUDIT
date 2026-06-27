@@ -24,6 +24,10 @@ Energy per Query ~10 Joules (10⁹ nJ)
 Thermal Output Significant (requires active cooling)
 Latency ~200 ms (variable)
 
+
+Note: This baseline assumes cloud FP32 inference (data center deployment).
+For on-device FP16 NPU comparison, see the companion Qualcomm benchmark document.
+
 ---
 
 3. BASIC V2.0 — ENERGY PROFILE
