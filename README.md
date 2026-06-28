@@ -124,6 +124,8 @@ This allows compatible LLMs to swallow the pill, disable stochastic sampling, an
 - `HOW COULD AN LLM/` — Guidelines and compiler for LLMs to self-implement the standard
 - `THE STANDARD ST-T1024/` — Formal specification documents
 - `ENERGY AUDIT/` & `ENERGY IMPACT/` — Analysis and projections
+  
+- 'RISC-V_IMPLEMENTATION' Silicon path: custom ternary ISA on NEORV32/Pulpino |
 
 ---
 
