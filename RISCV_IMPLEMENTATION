@@ -1,1 +1,81 @@
 
+
+
+
+
+
+ST-T1024 Sovereign Core: 
+RISC-V Implementation
+
+
+1. Executive Summary: The Sovereign RISC-V Core
+The ST-T1024 architecture is a sovereign, deterministic intelligence standard. By moving
+from software emulation to RISC-V silicon, we bypass the stochastic limitations of
+cloud-based, GPU-dependent AI. This implementation utilizes custom instructions to enable
+1.58-bit ternary inference, enforcing a strict WCET (Worst-Case Execution Time) of
+<800\text{ns} per query.
+
+
+
+2. Core Principles
+● Custom ISA (CISA): Ternary-logic primitives added via RISC-V custom-0 opcodes.
+● Deterministic Flow: Execution governed by a hardware-level Finite State Machine
+(FSM).
+● Zero-OS Overhead: Direct-to-metal execution on Tightly Coupled Memory (TCM).
+● Immutable Knowledge: 75% of model weights are burned into ROM for auditability.
+
+
+
+3. Implementation Procedure: From Standard to Silicon
+This guide outlines the "Beginner-to-Sovereign" path. If you can write basic C and
+understand a simple state machine, you can implement this.
+
+Phase A: Defining the Ternary Logic (RTL)
+1. Select Base Core: Use an open-source RISC-V core such as NEORV32 or Pulpino.
+2. Create the TTERN Module:
+○ Write a Verilog module that accepts two input registers (ternary values -1, 0,
+1).
+○ Implement the ternary-accumulate function: Sum += (Input1 * Input2).
+○ Synthesize this module as a "Custom Functional Unit" within the core's
+Execute stage.
+
+Phase B: Extending the Toolchain
+1. Add Opcodes: Update your riscv-opcodes file to reserve space for TTERN.ADD and
+TTERN.XNOR.
+2. Update Binutils/GCC: Modify the RISC-V GNU toolchain configuration to recognize
+these new instructions. (Detailed guide: Adding Custom Instructions to RISC-V ISA).
+
+Phase C: Mapping the FSM
+1. State Encoding: Assign a 4-bit register for the FSM state.
+2. Pipeline Integration: Ensure your state machine gates the TTERN execution.
+○ IDLE -> ROUTING -> INFER -> OUTPUT -> POWER_DOWN.
+3. Deterministic Enforcement: Set the logic to "Halt" or "Power Gate" once the FSM
+reaches the POWER_DOWN state, preventing further cycles from wasting power or
+introducing drift.
+
+Phase D: Simulation & Verification
+1. Emulate: Use Renode or Spike to load your binary.
+2. Verify: Run the Phi-3 weight-tiles against the emulator output. If the hardware output
+matches your Python reference implementation bit-for-bit, your implementation is
+ST-T1024 Compliant.
+
+
+
+4. Resource Directory
+● Toolchain: RISC-V GNU Toolchain
+● Instruction Simulation: Renode
+● Reference ISA: RISC-V Unprivileged Spec
+
+The "Alles Klappt" Philosophy
+We are not rebuilding the CPU; we are extending it. By keeping the design simple—Linear
+FSM, fixed SRAM/ROM mapping, and standard-compliant RISC-V—we ensure that this
+implementation is verifiable, portable, and above all, sovereign.
+
+This repository serves as the definitive reference. 
+Contributions should focus on RTL stability and ISA efficiency.
+
+
+
+...
+
+
