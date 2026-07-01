@@ -162,3 +162,18 @@ python3 st_t1024_emulator.py
 
 # Improved V2.1 (recommended)
 python3 IMPROVED-EMULATOR-of-ST-T1024/improved_st_t1024_v2.1.py
+
+
+---
+
+
+____________________________________
+
+## Broader Context
+
+ST-T1024 is part of a larger vision.
+ 
+See also: NEW CIVILIZATION BLUEPRINT
+https://github.com/actuing/NEW-CIVILIZATION-BLUEPRINT-
+
+____________________________________
