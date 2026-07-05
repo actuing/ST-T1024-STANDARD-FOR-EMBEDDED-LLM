@@ -1,1 +1,48 @@
 
+
+
+
+ST-T1024 Position on IEC 61508 Compliance
+
+
+IEC 61508 is the international functional safety standard for electrical, electronic, and programmable electronic (E/E/PE) safety-related systems. It defines requirements across the entire safety lifecycle for Safety Integrity Levels (SIL 1 to SIL 4).
+Current Status (July 2026)
+ST-T1024 is designed with strong alignment to the principles of IEC 61508, but is not yet formally certified as compliant.
+
+
+Key Strengths and Alignment
+Deterministic Execution: The FSM-orchestrated pipeline with physically assured execution time (AET = WCET) provides the predictability and repeatability required for safety-critical systems.
+Absence of Stochastic Behavior: By design, ST-T1024 eliminates non-deterministic elements such as temperature sampling, random generation, and probabilistic branching — significantly reducing the verification burden.
+Fault Isolation: Domain tiling enables strong separation of concerns. Only the relevant tile activates, supporting independence and freedom from interference principles.
+Power Gating and Fail-Safe States: Instant transition to 0V idle state and explicit 0x-AMBIG handling for ambiguous inputs provide clear, safe failure modes.
+Traceability: The architecture’s cycle-accurate FSM and ternary operations facilitate formal verification and high diagnostic coverage.
+Synergy with ISO 26262: Existing work on automotive compliance (ISO 26262) shares substantial overlap with IEC 61508.
+
+
+Current Limitations
+Lacks full formal verification suite for higher SIL levels (SIL 3/4).
+No independent third-party assessment or certification yet.
+Development process and tool qualification documentation are under development.
+Hardware implementations (FPGA/ASIC) require additional fault injection testing and diagnostic coverage analysis.
+
+
+Roadmap Toward Compliance
+Phase 1 (Short-term): Complete formal modeling of the FSM and FIS components.
+Phase 2: Perform FMEDA (Failure Modes, Effects, and Diagnostic Analysis) and achieve target diagnostic coverage.
+Phase 3: Develop full safety manual, lifecycle documentation, and configuration management per IEC 61508.
+Phase 4: Engage accredited certification body for SIL assessment (targeting SIL 2/3 initially).
+
+
+Conclusion
+ST-T1024 was architected from the ground up with safety-critical applications in mind. Its deterministic nature, predictable timing, and tile-based isolation make it a highly promising candidate for IEC 61508 compliance — potentially offering a new paradigm for efficient, certifiable AI in safety-related systems.
+The project welcomes collaboration with functional safety experts and certification bodies to complete the formal qualification process.
+
+
+
+
+License: Apache 2.0
+Author: ST-T1024 Team (based on input from M. Taalabi)
+Status: Draft – Open for community review and contributions
+
+
+
