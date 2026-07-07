@@ -69,7 +69,14 @@ Prior art is formally established with timestamps.
 The real-time systems community has been served notice.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+AET Extended Papers — Published 2026-07-07
 
+· RTX-2 Precedent: Thread-count-independent timing validated
+· WCET to AET: First physically assured execution time in AI
+· Both papers: Apache-2.0, open for review
+  
+Both available in
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
