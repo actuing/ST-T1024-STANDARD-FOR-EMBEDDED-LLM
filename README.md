@@ -115,7 +115,21 @@ This allows compatible LLMs to swallow the pill, disable stochastic sampling, an
 ---
 
 
+______________________________
 
+## 🛠️ Implementation Guides
+
+ST‑T1024 is designed to be deployed on real hardware. Two comprehensive guides are now available:
+
+- **[ST‑T1024: The Obvious Way to Si](https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM/blob/main/docs/ST-T1024_THE_OBVIOUS_WAY_TO_Si.md)** – A complete roadmap for building a custom ST‑T1024 ASIC, from FPGA prototyping through hybrid T1024 co‑processor to full 65nm tapeout. Ideal for nations, startups, and organisations seeking ultimate sovereignty and efficiency.
+
+- **[ST‑T1024 Microcontroller Implementation Guide](https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM/blob/main/docs/ST-T1024_MCU_IMPLEMENTATION_GUIDE.md)** – A step‑by‑step firmware guide for programming ST‑T1024 on ARM Cortex‑M, RISC‑V (NEORV32/PULPino), and other 32‑bit MCUs. Perfect for immediate prototyping, education, and edge deployment at minimal cost.
+
+Both paths are **Apache‑2.0**, **RISC‑V‑ready**, and align with ISO 26262 / IEC 61508. Start with an MCU, scale to an ASIC – or build your sovereign chip from day one. The choice is yours.
+______________________________
+
+
+---
 
 ## Repository Structure
 
