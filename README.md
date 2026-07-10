@@ -162,6 +162,14 @@ Made for those who want AI that is small, sovereign, efficient, and truthful.
 
 
 
+---
+
+ST-T1024 APPLICATIONS ALLOVER
+
+
+Link to ST-T1024 APPLICATIONS :
+https://github.com/actuing/ST-T1024----APPLICATIONS-
+
 
 ---
 
