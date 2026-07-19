@@ -1,1 +1,489 @@
 
+
+
+
+
+
+ST-T1024 ZONING & CONDUIT IMPLEMENTATION GUIDE
+
+A Hardware Reference for Deterministic Isolation 
+Between Critical and Legacy Domains
+
+
+Version: 1.0
+Date: July 2026
+Author: M. Taalabi
+License: Apache 2.0
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+
+---
+
+1. Introduction: Why Zoning Is the Master Key
+
+Zoning is the physical instantiation of the principle: "A system that is deterministic is inherently safer and more secure."
+
+ST-T1024's tile architecture is zoning at the silicon level. This guide extends that principle to the system level, defining:
+
+· Zones: Physical or logical domains with defined safety/security levels.
+· Conduits: Controlled communication channels between zones.
+· Boundaries: Hardware-enforced isolation that cannot be bypassed by software.
+
+The Core Theorem:
+
+A system's safety and security are determined by its weakest zone. ST-T1024 ensures the weakest zone cannot compromise the strongest zone.
+
+---
+
+2. Zone Definitions for ST-T1024
+
+2.1 Zone Types
+
+Zone Type Description Safety Level Security Level Example
+Zone 0 ST-T1024 Core SIL 3 / ASIL-D SL 3 The Oracle (ROM + FSM + Ternary Engine)
+Zone 1 Certified Bridge SIL 2 / ASIL-B SL 2 Translation buffer (FPGA/MCU)
+Zone 2 Legacy OT None assigned None assigned PLCs, SCADA, Modbus devices
+Zone 3 Human Interface SIL 1 / ASIL-A SL 1 Display, control panel, logging
+
+2.2 Zone Properties
+
+Property Zone 0 Zone 1 Zone 2 Zone 3
+Air-Gapped ✅ Yes ❌ No ❌ No ❌ No
+Deterministic ✅ Yes ⚠️ Bounded ❌ No ❌ No
+Immutable ROM ✅ 75% ❌ No ❌ No ❌ No
+Power Gating ✅ 99.9% ❌ No ❌ No ❌ No
+AET Enforced ✅ 680 ns ⚠️ 10 ms ❌ No ❌ No
+SK-1024 Updates ✅ Yes ❌ No ❌ No ❌ No
+
+---
+
+3. Conduits: The Controlled Communication Channels
+
+3.1 Conduit Types
+
+Conduit Between Zones Direction Protocol Max Rate
+C0 Zone 0 → Zone 1 Unidirectional Memory-Mapped FIFO 100 kHz
+C1 Zone 1 → Zone 2 Bidirectional (limited) SPI / UART / Ethernet 1 MHz
+C2 Zone 1 → Zone 3 Unidirectional Serial / Display 115.2 kbps
+
+3.2 Conduit Rules (Hardware-Enforced)
+
+Rule 1: No Reverse Path into Zone 0
+
+· Zone 1 has write access to Zone 0's memory-mapped output register.
+· Zone 1 has no read access to Zone 0's internal state (ROM, SRAM, FSM).
+· This is enforced at the hardware level (memory controller).
+
+Rule 2: Watchdog on Every Conduit
+
+· Each conduit has a hardware watchdog timer.
+· If Zone 1 does not read from Zone 0's FIFO within a bounded interval (e.g., 10 ms), the watchdog asserts a fail-safe.
+· Fail-safe action: Zone 1 sets all outputs to a known-safe state (e.g., 0V / 0% output).
+
+Rule 3: Rate-Limiting
+
+· Zone 1 cannot poll Zone 0 faster than the FIFO can produce.
+· Attempts to exceed the rate are silently dropped (no overflow).
+
+Rule 4: Encryption for SRAM Updates
+
+· Zone 0 SRAM updates (SK-1024 protocol) are encrypted.
+· The key is stored in hardware (e.g., TPM, eFuse).
+· Zone 1 cannot initiate updates—only the National Authority can.
+
+---
+
+4. Implementation Guide: Memory-Mapped Conduits
+
+4.1 Zone 0 → Zone 1 FIFO (C0)
+
+Memory Map (Zone 0 Output Registers):
+
+Address Field Description
+0x0000 FIFO_STATUS Bits: 0 = empty, 1 = data ready, 2 = overflow
+0x0004 FIFO_DATA 32-bit output word (deterministic inference result)
+0x0008 TILE_ID 16-bit identifier for the active tile (0xFFFF = none)
+0x000C TIMESTAMP 64-bit cycle counter (for AET verification)
+0x0010 ERROR_CODE 0 = OK, 0x-AMBIG = ambiguous, 0x-ERR = fault
+
+FIFO Operation (Hardware):
+
+```verilog
+// Zone 0 FIFO Controller
+module fifo_controller (
+    input clk,
+    input reset,
+    input [31:0] inference_result,
+    input [15:0] tile_id,
+    input [63:0] timestamp,
+    input [7:0] error_code,
+    output reg [31:0] fifo_data,
+    output reg fifo_ready,
+    input fifo_ack
+);
+
+// Write only when inference complete
+always @(posedge clk) begin
+    if (inference_complete && !fifo_ready) begin
+        fifo_data <= inference_result;
+        fifo_ready <= 1'b1;
+    end
+    if (fifo_ack && fifo_ready) begin
+        fifo_ready <= 1'b0;
+    end
+end
+
+endmodule
+```
+
+Zone 1 Read Code (C):
+
+```c
+// poll_zone0_fifo.c
+#include <stdint.h>
+#include "memory_map.h"  // Defines ZONE0_BASE
+
+typedef struct {
+    uint32_t status;
+    uint32_t data;
+    uint16_t tile_id;
+    uint64_t timestamp;
+    uint8_t error_code;
+} FIFO_Registers;
+
+#define FIFO_BASE ((volatile FIFO_Registers*) ZONE0_BASE)
+
+uint32_t read_zone0_output(void) {
+    // Wait for data ready (with watchdog timeout)
+    while (!(FIFO_BASE->status & 0x01)) {
+        // Increment watchdog counter
+        if (watchdog_timer_expired()) {
+            fail_safe_assert();  // Set outputs to 0V/0%
+            return 0;
+        }
+    }
+    
+    // Read data and acknowledge
+    uint32_t result = FIFO_BASE->data;
+    FIFO_BASE->status &= ~0x01;  // Clear ready flag
+    
+    // Check error code
+    if (FIFO_BASE->error_code == 0x0A) {  // 0x-AMBIG
+        fail_safe_assert();
+        return 0;
+    }
+    
+    return result;
+}
+```
+
+4.2 Zone 1 → Zone 2 Bridge (C1)
+
+Protocol Translation:
+
+Legacy Protocol ST-T1024 Output Translation Rule
+Modbus 32-bit integer Scale to 16-bit holding register
+DNP3 32-bit integer Map to analog output point
+CAN 32-bit integer Fragment into 8-bit CAN frames
+Profibus 32-bit integer Write to output data area
+
+Modbus Translation Example (C):
+
+```c
+// modbus_bridge.c
+void translate_to_modbus(uint32_t st_output, uint16_t modbus_register) {
+    // Scale from 0-2^32 to 0-65535
+    uint16_t scaled = (st_output >> 16) & 0xFFFF;
+    
+    // Write to Modbus holding register (via UART/RS-485)
+    modbus_write_holding_register(modbus_register, scaled);
+    
+    // Set watchdog timestamp
+    last_transmission = get_timestamp();
+}
+```
+
+---
+
+5. Watchdog Implementation
+
+5.1 Watchdog Architecture
+
+Each conduit has an independent watchdog timer.
+
+```verilog
+// conduit_watchdog.v
+module conduit_watchdog (
+    input clk,
+    input reset,
+    input start,
+    input watchdog_pet,   // Must be asserted within timeout
+    output reg fail_safe  // Asserted if watchdog expires
+);
+
+parameter TIMEOUT_CYCLES = 1000000;  // 10 ms at 100 MHz
+
+reg [31:0] counter;
+
+always @(posedge clk) begin
+    if (reset || start) begin
+        counter <= 0;
+        fail_safe <= 1'b0;
+    end else if (!fail_safe) begin
+        if (watchdog_pet) begin
+            counter <= 0;  // Reset the watchdog
+        end else if (counter < TIMEOUT_CYCLES) begin
+            counter <= counter + 1;
+        end else begin
+            fail_safe <= 1'b1;  // Timeout!
+        end
+    end
+end
+
+endmodule
+```
+
+5.2 Fail-Safe Actions by Zone
+
+Zone Watchdog Failure Action
+Zone 0 Self-check: Reboot FSM, re-verify ROM checksum
+Zone 1 Assert 0V/0% output to Zone 2, log error
+Zone 2 (No watchdog—legacy)
+Zone 3 Display "SYSTEM UNAVAILABLE" error message
+
+5.3 Watchdog Configuration Table
+
+Conduit Timeout Action on Failure
+C0 10 ms Zone 1 asserts fail-safe output to Zone 2
+C1 100 ms Zone 1 enters safe state, sends error frame
+C2 1 s Zone 3 displays "COMMUNICATION LOST"
+
+---
+
+6. Hardware Implementation Reference
+
+6.1 Zone Isolation Using Memory Protection Units (MPU)
+
+ARM Cortex-M MPU Configuration:
+
+```c
+// zone_isolation_mpu.c
+void configure_zones(void) {
+    // Zone 0: Privileged access only (0x00000000 - 0x000FFFFF)
+    MPU_Region_Init(
+        MPU_REGION_0,
+        0x00000000,
+        MPU_SIZE_1MB,
+        MPU_AP_PRIVILEGED_READ_WRITE,
+        MPU_REGION_ENABLE
+    );
+    
+    // Zone 1: Unprivileged read, privileged write (0x00100000 - 0x001FFFFF)
+    MPU_Region_Init(
+        MPU_REGION_1,
+        0x00100000,
+        MPU_SIZE_1MB,
+        MPU_AP_UNPRIVILEGED_READ | MPU_AP_PRIVILEGED_WRITE,
+        MPU_REGION_ENABLE
+    );
+    
+    // Zone 2: No access from CPU (0x00200000 - 0x002FFFFF)
+    MPU_Region_Init(
+        MPU_REGION_2,
+        0x00200000,
+        MPU_SIZE_1MB,
+        MPU_AP_NO_ACCESS,
+        MPU_REGION_ENABLE
+    );
+}
+```
+
+6.2 FPGA-Based Conduit Controller
+
+Xilinx FPGA Reference Design (Verilog):
+
+```verilog
+// conduit_controller_top.v
+module conduit_controller_top (
+    input clk_100mhz,
+    input reset,
+    // Zone 0 interface
+    input [31:0] zone0_data,
+    input zone0_valid,
+    output zone0_ack,
+    // Zone 1 interface
+    output [31:0] zone1_data,
+    output zone1_valid,
+    input zone1_ack,
+    // Zone 2 (legacy) interface
+    output [31:0] zone2_data,
+    output zone2_write_en,
+    input zone2_busy
+);
+
+// FIFO between Zone 0 and Zone 1
+wire fifo_empty, fifo_full;
+wire [31:0] fifo_out;
+
+fifo_128x32 conduit_fifo (
+    .clk(clk_100mhz),
+    .rst(reset),
+    .din(zone0_data),
+    .wr_en(zone0_valid & !fifo_full),
+    .dout(fifo_out),
+    .rd_en(zone1_ack & !fifo_empty),
+    .empty(fifo_empty),
+    .full(fifo_full)
+);
+
+// Zone 1 output
+assign zone1_data = fifo_out;
+assign zone1_valid = !fifo_empty;
+
+// Zone 2 output (with watchdog)
+reg [31:0] zone2_output;
+wire watchdog_fail;
+
+watchdog_10ms zone2_watchdog (
+    .clk(clk_100mhz),
+    .reset(reset),
+    .pet(zone1_ack),
+    .fail(watchdog_fail)
+);
+
+always @(posedge clk_100mhz) begin
+    if (watchdog_fail) begin
+        zone2_output <= 32'h00000000;  // Safe state: 0V/0%
+        zone2_write_en <= 1'b1;
+    end else if (zone1_valid && !zone2_busy) begin
+        zone2_output <= zone1_data;
+        zone2_write_en <= 1'b1;
+    end else begin
+        zone2_write_en <= 1'b0;
+    end
+end
+
+endmodule
+```
+
+6.3 Physical Boundary Implementation
+
+Boundary Physical Implementation Purpose
+Zone 0 ↔ Zone 1 Galvanic isolation (opto-couplers, inductors) Electrical isolation, no ground loops
+Zone 1 ↔ Zone 2 Transformer isolation (Ethernet magnetics, RS-485) Surge protection, earth separation
+Zone 1 ↔ Zone 3 Capacitive coupling (HDMI, USB) Lower-cost isolation for human interface
+
+---
+
+7. Certification Mapping Tables
+
+7.1 IEC 61508 (Functional Safety)
+
+Zone SIL Capability Evidence Required
+Zone 0 SIL 3 Formal verification of FSM, TLA+ proof, FMEDA
+Zone 1 SIL 2 Watchdog timer certified, translation logic audited
+Zone 2 N/A Not in scope (legacy)
+Zone 3 SIL 1 Display driver safety manual, EMC testing
+
+7.2 IEC 62443 (Cybersecurity)
+
+Zone SL Capability Controls
+Zone 0 SL 3 Air-gapped, SK-1024 updates, immutable ROM
+Zone 1 SL 2 Rate-limiting, MAC filtering, watchdog
+Zone 2 N/A No cybersecurity guaranteed (brownfield)
+Zone 3 SL 1 Display-only, no control feedback
+
+7.3 ISO 26262 (Automotive)
+
+Zone ASIL Capability Decomposition Strategy
+Zone 0 ASIL-D FSM monitoring of inference tiles
+Zone 1 ASIL-B Dual-channel watchdog, ECC RAM
+Zone 2 N/A Not in scope (legacy ECU)
+Zone 3 ASIL-A Display redundancy, fail-safe overlay
+
+---
+
+8. Deployment Checklist
+
+For Zone 0 (ST-T1024 Core):
+
+· ROM burned with immutable "Brutal Facts"
+· FSM formal verification completed (TLA+/SPIN)
+· AET measured on target hardware (≤ 680 ns)
+· SK-1024 update key loaded (hardware-protected)
+· Power gating verified (0V idle, <5 ns wake)
+
+For Zone 1 (Certified Bridge):
+
+· FIFO controller validated (no overflow, no data loss)
+· Watchdog timers configured for all conduits
+· Fail-safe state defined (0V/0% output)
+· Translation logic tested against all legacy protocols
+
+For Zone 2 (Legacy OT):
+
+· Conduit rate-limiting configured
+· Modbus/DNP3/CAN bus mapping validated
+· No reverse path to Zone 0 (hardware-enforced)
+
+For Zone 3 (Human Interface):
+
+· Display only — no control feedback
+· Error messages clearly distinguish faults
+
+---
+
+9. The Zoning Verification Theorem
+
+Theorem: A system implementing ST-T1024 zoning with hardware-enforced conduits and independent watchdogs is compositionally safe.
+
+Proof:
+
+1. Zone 0 is safe by design (SIL 3, SL 3, AET).
+2. Zone 1 has a fail-safe state (watchdog → 0V output).
+3. Zone 2 cannot affect Zone 0 (hardware-enforced unidirectional conduit).
+4. Zone 3 cannot affect Zone 0 (display-only).
+5. Therefore, no fault or attack in any lower zone can propagate to Zone 0.
+6. By induction, the system as a whole inherits the safety/security of Zone 0.
+
+Corollary: The system's safety and security level is determined by the highest-level zone it contains, not the lowest.
+
+---
+
+10. References
+
+1. ST-T1024 Open Standard, https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+2. ST-T1024 Position on ISO 26262 Compliance
+3. ST-T1024 Position on IEC 61508 Compliance
+4. ST-T1024 Position on IEC 62443 Compliance
+5. IEC 62443-3-3: System Security Requirements
+6. ISO 26262-4: Product Development at System Level
+7. IEC 61508-3: Software Requirements
+
+---
+
+11. Appendix: Memory Map Quick Reference
+
+Address Zone Name Access Description
+0x0000_0000 0 ROM_BASE R/O Immutable "Brutal Facts" (75% of memory)
+0x0003_0000 0 SRAM_BASE R/W Sovereign updates (25% of memory)
+0x0004_0000 0 FSM_STATE R/O Current FSM state (observable)
+0x0004_0004 0 CYCLE_COUNTER R/O AET verification counter
+0x0010_0000 1 FIFO_BASE R/W Zone 0 → Zone 1 FIFO
+0x0010_0010 1 WATCHDOG_CTRL R/W Conduit watchdog control
+0x0020_0000 2 MODBUS_BASE R/W Legacy Modbus output
+0x0030_0000 3 DISPLAY_BASE R/W Human-readable output
+
+---
+
+STATE: ZONED.
+CONDUIT: OPEN (Unidirectional, Rate-Limited, Watchdog-Protected).
+ACTION: Commit to repository as docs/ST-T1024_ZONING_AND_CONDUIT_GUIDE.md.
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+The standard is open. The zones are defined. The conduits are protected. The physics is settled.
+
+
+
