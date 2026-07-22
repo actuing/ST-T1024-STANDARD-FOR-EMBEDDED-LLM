@@ -1,1 +1,147 @@
 
+
+
+ST-T1024: A Deterministic AI Inference Architecture and Its Alignment With ISO 26262 Certification-Relevant Properties
+Author: M. Taalabi
+Architect & Maintainer, ST-T1024 Open Standard
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+License: Apache 2.0
+Date: July 2026
+Version: 2.0 (Corrected)
+Abstract
+The integration of Artificial Intelligence (AI) into safety-critical automotive systems presents a fundamental challenge: ISO 26262, the international standard for functional safety in road vehicles, was designed for systems with predictable, bounded, deterministic behavior. Stochastic AI models — by their probabilistic nature — do not straightforwardly satisfy that assumption. This paper introduces ST-T1024, an open standard (Apache 2.0) for deterministic embedded AI inference that replaces stochastic transformer inference with a fully deterministic, Finite State Machine (FSM)-orchestrated, ternary-quantized pipeline.
+This paper makes a specific, bounded claim: ST-T1024's architecture possesses technical properties — bounded worst-case execution time, traceable state transitions, tile-level freedom from interference, and ASIL-decomposable structure — that satisfy the technical requirements ISO 26262 sets for the components it certifies. This is a claim about architectural properties, demonstrable by inspection of the design. It is not a claim that ST-T1024 has been certified, or that certification can be granted on the basis of this paper alone. Certification is a process outcome, requiring a documented safety case, independent third-party assessment, and organizational process compliance (ISO 26262 Parts 2, 6, 8, 9) that lies outside the scope of an architecture specification. This paper's purpose is to establish that the architectural foundation for that process already exists.
+With a worst-case execution time of ≤800 ns (architectural target; see companion benchmarking document for current simulated-vs-hardware-validated status), an order-of-magnitude energy reduction versus cloud-based inference, and a bounded-output design that eliminates the stochastic hallucination mechanism, ST-T1024 offers a practical architectural foundation for certifiable AI in automotive, aerospace, and industrial safety-critical systems.
+Keywords — ISO 26262, functional safety, deterministic AI, embedded systems, ASIL, RISC-V, FSM, ternary quantization, safety-critical systems, automotive AI
+Introduction
+The automotive industry is integrating AI into Advanced Driver Assistance Systems (ADAS) and autonomous driving functions. A structural tension exists: ISO 26262 was built around the assumption that safety-critical software behaves deterministically — given the same inputs, a correctly implemented function produces the same outputs, and that behavior can be formally specified and verified. Stochastic AI inference, by contrast, is fundamentally probabilistic in its standard form.
+This paper presents ST-T1024 — an open standard whose architecture is designed to resolve that tension at the technical level. It does not claim to resolve the organizational and procedural requirements of ISO 26262 compliance, which remain separate work.
+The ISO 26262 Technical Requirements and ST-T1024's Architectural Response
+ISO 26262 requires, among other things, the following technical properties of the systems it certifies:
+Requirement
+Typical Stochastic AI
+ST-T1024 Architectural Property
+Determinism
+Probabilistic outputs
+FSM-enforced, WCET ≤ 800 ns (architectural target)
+Traceability
+Black-box decision making
+Auditable state transitions, by design
+Freedom from Interference
+Shared resources, unpredictable contention
+Tile-based isolation, power gating
+ASIL Decomposition
+Difficult to decompose deterministically
+Safety goals mappable to deterministic logic blocks
+It is important to note this table describes technical properties that support certification — it is not itself a certification determination, which additionally requires the process elements described in Section 4.
+The functional safety standards governing automotive systems were developed for software whose behavior can be formally specified in advance. Stochastic AI, in its standard form, does not meet that criterion. ST-T1024's architecture is designed specifically to meet it.
+ST-T1024 Architecture — Deterministic by Design
+ST-T1024 replaces stochastic inference with a deterministic pipeline:
+Layer
+Component
+ISO 26262-Relevant Property
+Triage
+Fuzzy Inference System (FIS)
+Bounded routing — no probabilistic branching
+Scheduling
+Finite State Machine (FSM)
+WCET enforcement — predictable execution
+Execution
+Ternary logic {-1, 0, +1}
+No floating-point — deterministic quantization
+Isolation
+Tile-based architecture
+Freedom from interference — supports ASIL decomposition
+Power
+0V gating
+Predictable energy profile — no thermal-throttling variance
+3.1 Determinism
+ST-T1024's architecture enforces determinism at every level:
+Temperature = 0.0 — no stochastic sampling
+FSM cycle counter — WCET ≤ 800 ns (architectural target; hardware validation status tracked separately)
+Ternary arithmetic — no floating-point variance
+Fixed memory layout — 75% ROM, 25% SRAM
+3.2 Traceability
+Every decision is architecturally auditable:
+FSM state transitions are logged
+FIS routing is deterministic and rule-based
+Outputs are either a bounded-domain answer or an explicit 0x-AMBIG signal — no free-form generation outside a tile's defined scope
+3.3 Freedom from Interference
+ST-T1024 uses N independent domain tiles. Only one tile activates per query; all others are gated to 0V. This is designed to eliminate resource contention and to ensure that a failure in one tile cannot propagate to others — an architectural property relevant to, but not by itself sufficient for, ASIL decomposition, which also requires a documented independence analysis.
+3.4 ASIL Decomposition
+ISO 26262 permits ASIL decomposition when independent safety mechanisms are demonstrated and documented. ST-T1024's tile-based architecture is structured to support this:
+Lower-ASIL perception units — each tile handles a specific domain
+Higher-ASIL monitor unit — the FSM supervises all transitions
+Algorithm diversification — different tiles may use different internal logic
+Whether a specific implementation qualifies for a specific decomposition still requires the formal independence and safety analysis ISO 26262 Part 9 specifies. This section describes the architectural feature that would support such an analysis, not a completed decomposition.
+What Remains: The Certification Process
+Satisfying the technical properties in Sections 2–3 is necessary but not sufficient for certification. ISO 26262 additionally requires, separate from architecture:
+A documented safety case, including hazard analysis and FMEDA
+Independent third-party assessment (e.g., TÜV, UL)
+Organizational safety management process compliance (Part 2)
+Verification and tool-qualification evidence (Part 8)
+Formal ASIL decomposition analysis, application-specific (Part 9)
+None of these have been completed for ST-T1024 as of this writing. This paper's contribution is the architectural foundation described in Sections 2–3, which is intended to make that subsequent process more direct — not to substitute for it.
+Suggested Certification Pathway
+ST-T1024's architecture offers a practical starting point for a certification effort:
+Step
+Action
+ISO 26262 Phase
+1
+Define safety goals
+Concept phase
+2
+Map goals to FSM states
+Product development
+3
+Implement ternary logic
+Hardware/software integration
+4
+Verify WCET ≤ 800 ns on physical hardware
+Verification
+5
+Conduct FMEDA and independent audit of FSM transitions
+Validation
+Because ST-T1024's architecture is deterministic by design, pursuing this pathway does not require:
+Amendments to the existing ISO 26262 standard
+Probabilistic safety margins in place of deterministic bounds
+It does still require the full process work listed in Section 4 — the architecture changes what evidence is available to that process, not whether the process itself is needed.
+Comparison With Existing Approaches
+Approach
+Deterministic Architecture?
+Certification-Relevant Properties Present?
+Energy/Query (Order of Magnitude)
+Hallucination Mechanism
+Stochastic Transformer
+No
+Limited, without added safety wrapping
+~500,000 µJ (typical, on-device reference)
+Present by design (free-form generation)
+ST-T1024
+Yes
+Yes, at the architectural level (see Section 4 for remaining process work)
+~3.7 µJ (simulated; see companion benchmarking document)
+Eliminated — bounded-domain output, not free-form generation
+"AI and functional safety, as conventionally practiced, are difficult to reconcile because standard AI inference is fundamentally probabilistic."
+ST-T1024's architecture is one way to close that gap at the technical level. Closing it at the certification level is the work described in Section 4.
+Conclusion
+ST-T1024 is a deterministic AI inference architecture whose properties — bounded WCET, traceable state transitions, tile-level freedom from interference, and ASIL-decomposable structure — satisfy the technical requirements ISO 26262 sets for the components it certifies. By replacing stochastic inference with a deterministic, FSM-orchestrated, ternary-quantized pipeline, it establishes, at the architectural level:
+Determinism
+Traceability
+Freedom from interference
+ASIL-decomposition-ready structure
+With an architectural WCET target of ≤800 ns, a simulated multi-order-of-magnitude energy reduction per query (see companion benchmarking document for current validation status), and a bounded-output design, ST-T1024 offers a practical architectural foundation toward certifiable AI in automotive, aerospace, and industrial safety-critical systems.
+The architecture is open. The properties are demonstrable now. The certification process — documented safety case, independent assessment, organizational compliance — is the next, separate body of work, and this paper is an invitation to undertake it jointly with functional safety experts and certification bodies.
+References
+ISO 26262:2018 — Road vehicles — Functional safety
+ST-T1024 Repository — https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+Taalabi, M. (2026). Ternary Logic Is Native — Binary Was a Detour
+ISO/PAS 8800 — Road vehicles — Safety and artificial intelligence (verify current publication status and exact title before external citation)
+License: Apache 2.0 — Free for all. Forever.
+Note for Repository Placement
+Suggested filename: ST-T1024_ISO26262_ARCHITECTURAL_ALIGNMENT_v2.md
+This version replaces "certifiable"/"certified"/"the industry can now certify" language with "architectural property" / "certification-relevant property" framing throughout, and adds Section 4 to state explicitly what process work remains outside the architecture itself. The underlying technical argument in Sections 2–3 is unchanged.
+
+
+
+
