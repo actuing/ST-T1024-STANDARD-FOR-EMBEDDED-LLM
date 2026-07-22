@@ -120,12 +120,7 @@ Indonesia
 Sent — early-stage
 Note on "follow-up": the prior version of this document used the term "Recall" for AFNOR and ARSO. That term is ambiguous (could mean a follow-up sent, a response received, or a withdrawal) and has been replaced here with "follow-up sent" to reflect what is actually confirmed: a second outbound contact, not a response.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ACADEMIC
-SSRN Paper 1 — "Mutual Inductance as a Formal Model of Human Relational Dynamics"
-Abstract ID 7004038 — Submitted 2026-06-29
-Status: Submission confirmed via SSRN's own system. (Independently verifiable by checking the abstract ID on SSRN directly.)
-SSRN Paper 2 — Scheduled no earlier than 2026-07-26. Not yet submitted.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 "From WCET to AET (Assured Execution Time): The First Physically Assured Execution Time in AI Inference" — A Position Paper on Deterministic Real-Time AI
 ACADEMIC STATUS
 "From WCET to AET" is published in the ST-T1024 GitHub repository under Apache 2.0. It has not been submitted to RTSS, TECS, or arXiv. Publication in the repository establishes a timestamped, publicly verifiable record of the idea (a real GitHub commit date, checkable by anyone) — this is presented as public disclosure and prior art, not as peer-reviewed or conference-accepted work.
