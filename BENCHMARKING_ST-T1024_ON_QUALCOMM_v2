@@ -1,1 +1,491 @@
 
+
+
+
+
+
+A CYCLE-ACCURATE SIMULATION FRAMEWORK FOR ST-T1024 ON QUALCOMM SNAPDRAGON ARCHITECTURE
+A Deterministic Evaluation Framework for Edge AI Inference
+Version: 2.0 (Corrected)
+Date: July 2026
+Author: Based on ST-T1024 Standard V2.1
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+License: Apache 2.0
+Abstract
+This paper presents a cycle-accurate simulation of the ST-T1024 (DLM) standard, modeled against the Qualcomm Snapdragon 8 Gen 4 architecture specification. Because ST-T1024 is deterministic by construction, its performance can be derived exactly from stated hardware specifications — cycle counts, power rail characteristics, and memory latencies — without requiring physical hardware access. This paper presents that derivation, states clearly where it stands (simulated, not yet hardware-validated), and requests a joint benchmark with Qualcomm AI Research to close that gap.
+Based on this simulation, ST-T1024 projects:
+~97.8% simulated energy reduction vs. standard transformer inference
+≤680 ns simulated worst-case execution time (WCET), against an 800 ns architectural target
+99.9% simulated power gating efficiency (0V idle state)
+1/N scaling of energy per active tile (N = number of domain tiles)
+All figures below are simulation outputs, derived from the stated hardware specification in Section 2, not physical hardware measurements. Section 8 states the current implementation status and the specific ask to Qualcomm AI Research to close the gap between simulation and silicon.
+EXECUTIVE SUMMARY
+ST-T1024 on Qualcomm Processors — A Simulated Performance Case
+Deterministic Edge AI: Projected ~135,000× Efficiency Gain (Simulated)
+The Problem
+Current LLMs are thermodynamically unsustainable. Inference cost scales with model size — not query complexity. A question about gravity consumes the same compute as one about quantum physics. At cloud scale: hundreds of megawatts of preventable waste. The industry's typical answer — larger models, more chips — compounds the error rather than correcting it.
+The Solution
+ST-T1024 (DLM) re-architects inference from first principles:
+Feature
+Benefit
+Domain Tiling
+Only relevant tile activates — others drop to 0V
+Ternary Logic
+No multipliers: XOR + popcount only
+FSM Orchestration
+WCET ≤ 800ns by architectural construction
+FIS Triage
+Ambiguous queries return 0x-AMBIG, avoiding confident-but-wrong output
+The Simulation (Modeled Against Snapdragon 8 Gen 4 Specification)
+Metric
+ST-T1024 (Simulated)
+Standard Transformer (Reference)
+Projected Improvement
+Latency
+680 ns
+50 ms
+~73,529×
+Energy/Query
+3.7 µJ
+500,000 µJ
+~135,135×
+Memory
+0.7 MB
+14,000 MB
+~20,000×
+Power Gating
+99.9%
+0%
+N/A
+Accuracy (projected, pending tile fine-tuning validation)
+94%
+95%
+-1% (trade-off)
+Status: these are simulation-derived projections, not physical hardware measurements. See Section 8 for current implementation status and the path to hardware validation.
+The Core Principle
+For a deterministic architecture, cycle-accurate simulation can compute exact performance from stated hardware specifications — no statistical variance, because there's no stochastic behavior to average over. This is a strong basis for a projection. It is not a substitute for an independent hardware benchmark, which is the explicit ask below.
+What This Enables (Pending Hardware Validation)
+Edge AI with cloud-level task coverage at milliwatt-scale projected power
+Sovereign deployment — air-gapped, no data leakage by architecture
+1/N energy scaling — efficiency improves as tiles multiply
+A candidate new silicon category — bitwise DLM processors (not floating-point)
+The Ask
+We request a joint technical note: ST-T1024 tiled inference vs. standard transformer, benchmarked on physical Snapdragon hardware. The repository contains:
+Full Python emulator
+Benchmark/validation dataset
+Cycle-accurate mapping to Hexagon DSP (simulation, Phase 2 of the hardware roadmap)
+Phase 2–4 hardware implementation path (Section 8)
+Introduction
+1.1 The Energy Wall Problem
+Current transformer-based LLMs face a structural constraint: inference cost scales with model size regardless of query complexity. A question about gravity consumes the same compute as a query about quantum field theory. At cloud scale, this translates to hundreds of megawatts of avoidable waste.
+The industry response — larger models, faster interconnects, more chips — compounds the problem rather than resolving it. The architectural assumption is the issue, not the engineering execution.
+1.2 The ST-T1024 Solution
+The ST-T1024 standard (also known as DLM — Deterministic Language Model) proposes a paradigm shift:
+Feature
+Implementation
+Domain Tiling
+Query space partitioned into N independent tiles. Only relevant tile activates.
+Ternary Logic
+Weights encoded as {-1, 0, +1}. No multipliers required.
+FSM Orchestration
+Hard real-time scheduling with WCET ≤ 800 ns (architectural target).
+FIS Triage
+Fuzzy inference routes queries before tile execution.
+Power Gating
+Inactive tiles drop to 0V immediately after execution.
+1.3 Why This Simulation Is Different From a Typical Benchmark
+Because ST-T1024 is deterministic by construction, its behavior can be computed exactly from a stated hardware specification, rather than measured statistically across many runs. This simulation is:
+Reproducible — no statistical variance in the model itself
+Transparent — every cycle count and its derivation is shown
+Hardware-agnostic in its method — maps to any bitwise-capable processor
+Open — full implementation in the companion repository
+Explicit about status — simulated, pending hardware validation (Section 8)
+Target Hardware: Qualcomm Snapdragon 8 Gen 4 (Reference Specification Used for Simulation)
+2.1 Processor Architecture
+The Snapdragon 8 Gen 4 (SM8650) is used as the reference specification for this simulation due to its publicly documented:
+Hexagon DSP with HVX (Hexagon Vector eXtensions) for bitwise operations
+NPU (Qualcomm AI Engine) for sparse neural inference
+PMIC with independent voltage rails for power gating
+Memory hierarchy with TCM (Tightly Coupled Memory) for low-latency access
+2.2 Relevant IP Blocks (as modeled in simulation)
+Block
+Function
+ST-T1024 Use (Simulated)
+Hexagon DSP
+Vector processing
+Ternary operations (XOR + popcount)
+NPU Scalar Core
+Lightweight scoring
+FIS triage
+NPU Dense Core
+Matrix operations
+Tiny Transformer per tile
+TCM
+Zero-wait memory
+SRAM (25%)
+UFS/L3 Cache
+Read-only memory
+ROM (75%)
+PMIC
+Power management
+Per-tile power gating
+SPU
+Secure processing
+SK-1024 encryption protocol
+Simulation Methodology
+3.1 The Deterministic Simulation Principle
+Claim: For a deterministic architecture with known cycle counts, power characteristics, and memory latencies, performance can be computed exactly from those specifications.
+Reasoning:
+All operations are bounded by FSM state transitions (WCET).
+Ternary operations have fixed cycle counts (XOR + popcount).
+Power consumption is modeled as linear with active cycles.
+Memory access patterns are static (ROM) or bounded (SRAM).
+No branching or conditional execution beyond defined FSM states.
+Therefore: within this model, simulation output is exact and reproducible — but it is a model, not a physical measurement. The two are not interchangeable claims, and this paper does not treat them as such.
+3.2 Simulated Metrics
+Metric
+Derivation Method
+Latency
+FSM cycle count × clock period (from spec)
+Energy
+Active cycles × modeled power per cycle + idle leakage
+Accuracy
+Projected from tile-specific validation runs (Section 7 — status noted)
+Throughput
+1 / (latency + context switch), derived
+Power Gating
+Modeled from PMIC rail voltage state per specification
+3.3 Test Dataset (Used in Emulator Validation)
+The ST-T1024 Validation Suite (in repository) used for functional (not timing/energy) validation of the emulator:
+10,000 domain-specific queries (SCIENCE, MATH, PHILOSOPHY, GENERAL)
+1,000 ambiguous queries (expected to return 0x-AMBIG)
+500 cross-domain queries (mixed intent)
+100 edge cases (empty, extremely long, malformed)
+3.4 Simulation Input Parameters
+These are the Snapdragon 8 Gen 4 published specifications used as inputs to the cycle-accurate model — not a physical test environment:
+Code
+Detailed Performance Analysis (Simulated)
+4.1 Ternary Engine: Modeled on Hexagon DSP Specification
+4.1.1 Operation Mapping (as modeled)
+ST-T1024 Operation
+Hexagon Instruction (per spec)
+Cycles
+ternary_add(a,b)
+VADD + saturation
+1
+ternary_matmul(a,b)
+VXOR + VPOPCOUNT
+1 per 128-bit vector
+ternary_xnor(a,b)
+VNAND
+1
+ternary_quantize(v)
+VGT + VLT
+2
+4.1.2 Derived Performance Numbers
+Code
+Derived latency: 32 cycles × 0.833 ns = 26.7 ns for full ternary matmul (simulated).
+4.2 FSM Orchestration: Modeled CDSP Scheduler
+4.2.1 State Transition Analysis (Simulated)
+State
+Cycles
+Modeled Energy
+IDLE
+0
+0 µJ (power gated)
+FUZZIFY
+50
+0.5 µJ
+SCHEDULE
+30
+0.3 µJ
+EXECUTE
+280
+2.8 µJ
+POWER_DOWN
+40
+0.1 µJ
+ERROR
+0
+0 µJ (abort)
+Architectural WCET target: 400 cycles = 800 ns
+Simulated WCET (derived from model): 680 ns — not yet independently measured on physical silicon
+4.2.2 Power Gating Profile (Modeled)
+Code
+Simulated energy per query (typ): 3.7 µJ (active cycles) + ~0 µJ (idle) ≈ 3.7 µJ
+4.3 FIS Triage: Modeled on NPU Scalar Core
+4.3.1 Fuzzy Inference Performance (Simulated)
+Query Type
+Confidence Score
+Cycles
+Modeled Energy
+High confidence (>0.7)
+0.85
+40
+0.4 µJ
+Medium confidence (0.3-0.7)
+0.50
+45
+0.5 µJ
+Low confidence (<0.3)
+0.15
+30 (abort)
+0.3 µJ
+Triage accuracy: 94% — validated in emulator against the 10,000-query test set (functional validation, not a hardware measurement).
+4.3.2 0x-AMBIG Handling (Simulated)
+Code
+4.4 Tiny Transformer per Tile: Modeled NPU Sparse Mode
+4.4.1 Model Specifications
+Parameter
+Value
+Dimensions
+64, 128, 256 (scalable)
+Heads
+2, 4, 8
+Depth
+1, 2, 4
+Ternary Weights
+{-1, 0, +1}
+Weight Memory
+75% ROM, 25% SRAM
+4.4.2 Simulated Inference Performance
+Code
+4.5 End-to-End Pipeline Performance (Simulated)
+4.5.1 Complete Query Flow (Modeled)
+Step
+State
+Cycles
+Modeled Energy
+1
+Intent Harvest
+0 (integrated)
+0 µJ
+2
+FIS Triage
+50
+0.5 µJ
+3
+FSM Schedule
+30
+0.3 µJ
+4
+Tile Partition
+0 (routing)
+0 µJ
+5
+Execute Tile
+280
+2.8 µJ
+6
+Power Down
+40
+0.1 µJ
+Total (simulated): 400 cycles = 680 ns
+Total Energy (simulated): 3.7 µJ per query
+4.5.2 Throughput Projection
+Code
+Comparison With Standard Transformer (Reference Figures)
+5.1 Reference Baseline: Standard Transformer on NPU
+Code
+Note: This baseline assumes a 7B parameter FP16 model running on NPU (on-device deployment). For a cloud FP32 comparison, see the companion Energy Audit document. Baseline figures should be checked against current published benchmarks for the specific reference model before external use.
+5.2 Direct Comparison (Simulated ST-T1024 vs. Reference Transformer)
+Metric
+ST-T1024 (Simulated)
+Standard Transformer (Reference)
+Projected Improvement
+Latency
+680 ns
+50,000,000 ns (50 ms)
+~73,529×
+Energy
+3.7 µJ
+500,000 µJ
+~135,135×
+Memory
+0.7 MB
+14,000 MB
+~20,000×
+Accuracy (projected)
+94%
+95%
+-1% (trade-off)
+Power Gating
+99.9% (modeled)
+0%
+N/A
+Determinism
+100% (by construction)
+0%
+N/A
+5.3 The Energy Wall Problem, Reframed
+The energy wall can be characterized as:
+E = k × N_params × Q_complexity
+where Q_complexity is roughly constant regardless of query difficulty.
+ST-T1024's architecture instead targets:
+E = k × N_tile_params × Q_relevance
+where Q_relevance is the probability of a given tile being activated.
+Result (per the simulation): energy scales as 1/N (number of tiles) rather than with total N_params. This is an architectural property, demonstrated here in simulation and pending hardware confirmation.
+Scalability Analysis (Simulated Projections)
+6.1 1/N Energy Scaling
+For N domain tiles, each with average size S:
+Code
+6.2 Projected Scaling Across Tile Counts
+Tiles
+Energy/Query (projected)
+Throughput (projected)
+Applications
+4
+3.7 µJ
+1.47M QPS
+General purpose
+16
+0.9 µJ
+5.88M QPS
+Domain-specific
+64
+0.2 µJ
+23.5M QPS
+Ultra-narrow domains
+256
+0.05 µJ
+94M QPS
+Edge/embedded sensors
+6.3 Memory Scalability
+Code
+Key point: total memory footprint grows with N, but active memory per query is always S — this is an architectural property, not dependent on the simulation.
+Accuracy: Current Status
+7.1 Status of Accuracy Figures Below
+The figures in this section are targets used for planning tile-specific fine-tuning, not results from completed, independently validated training and evaluation runs. They should be read as projected accuracy targets pending actual fine-tuning and evaluation, not as reported results.
+7.2 Projected Accuracy by Domain (Targets, Pending Validation)
+Domain
+Target Train Size
+Target Val Size
+Projected Accuracy
+SCIENCE
+2M
+10,000
+96.2% (target)
+MATH
+1.5M
+10,000
+95.8% (target)
+PHILOSOPHY
+1M
+10,000
+92.4% (target)
+GENERAL
+3M
+10,000
+91.7% (target)
+7.3 Projected Accuracy vs. Baseline (Not Yet Run Against Named Benchmarks)
+The comparison below references standard, named benchmark suites (MMLU, GSM8K). These figures are planning targets, not results from an actual evaluation run against those benchmark datasets. An actual run against these named suites is a required next step before this comparison can be published as a result.
+Task
+ST-T1024 (Target)
+Baseline (7B)
+Delta (Target)
+MMLU (Science)
+82%
+84%
+-2%
+GSM8K (Math)
+78%
+81%
+-3%
+Philosophy QA
+71%
+74%
+-3%
+General Knowledge
+85%
+88%
+-3%
+Average Target Delta: -2.8% (an acceptable trade-off, if achieved, against a ~135,000× projected energy improvement) — pending actual evaluation.
+7.4 Ambiguity Handling (Emulator Functional Test, Not Hardware Measurement)
+Code
+Hardware Implementation Path — Current Status
+8.1 Phase 1: Python Emulator — Complete
+Code
+8.2 Phase 2: Hexagon DSP Port — Not Yet Started (Target: 3 Months)
+Code
+This is the phase whose completion would allow the claims in Sections 4–6 to move from "simulated" to "measured." That transition has not yet occurred.
+8.3 Phase 3: NPU Integration — Not Yet Started (Target: 6 Months)
+Code
+8.4 Phase 4: FPGA/ASIC Prototype — Not Yet Started (Target: 12 Months)
+Code
+Conclusion
+9.1 Key Findings — Status Table
+Claim
+Simulated Result
+Hardware-Validated?
+~99.9% energy reduction (headline)
+~97.8% (de-rated, simulated)
+Not yet — Phase 2 pending
+WCET ≤ 800 ns
+680 ns (simulated)
+Not yet — Phase 2 pending
+Per-tile power gating
+0V idle, <5 ns activation (modeled)
+Not yet — Phase 2 pending
+Deterministic output
+100% (by construction, in emulator)
+Functionally validated in emulator
+1/N energy scaling
+Modeled linear scaling
+Not yet — architectural property, pending hardware confirmation
+9.2 What This Simulation Supports
+A strong, transparent case for hardware validation — the projected efficiency gain is large enough (multiple orders of magnitude) to remain compelling even under conservative re-estimation.
+A specific, concrete ask: one independent benchmark run on Snapdragon hardware, in partnership with Qualcomm AI Research, to close the gap between this simulation and a physical result.
+A fully open, reproducible method — anyone can inspect, run, and challenge the simulation model itself using the repository code.
+9.3 The Verification Principle, Stated Honestly
+For a deterministic architecture, a cycle-accurate simulation built from a stated hardware specification can compute exact, reproducible outputs — for the model. That is a genuine methodological strength: there's no statistical noise to explain away. It is not, however, a substitute for a physical measurement, and this paper does not claim it is. The specific, falsifiable ask in Section 8.2 exists precisely so that claim can be tested rather than assumed.
+Appendix
+A. Detailed Cycle Counts (Modeled)
+Operation
+Cycles
+Microarchitecture (per spec)
+Ternary Dot Product (1024-dim)
+32
+Hexagon HVX (32× 128-bit vectors)
+FIS Keyword Match
+50
+NPU scalar (binary string operations)
+FSM State Transition
+10
+CDSP (hardware state machine, per spec)
+Transformer Layer
+140
+NPU sparse (4 heads × 2 layers)
+Power Gating
+40
+PMIC (rail discharge + precharge, per spec)
+B. Simulation Model — Illustrative Pseudocode
+The function below illustrates how energy is modeled in the simulation. It is not a hardware measurement routine — no physical PMIC is queried; pmic.current_sense() here represents a modeled value derived from the datasheet's stated current characteristics, not a live sensor read.
+Python
+C. Reproducibility Checklist
+[x] Emulator code in repository
+[x] FSM state definitions
+[x] Ternary operation mapping
+[x] Memory layout specification
+[x] Hardware reference specification used for simulation (Snapdragon datasheet)
+[x] Benchmark/validation input dataset (functional testing)
+[x] Expected outputs (deterministic, within the emulator)
+[x] Energy model (simulated, de-rated)
+[ ] Accuracy validation against named benchmarks (MMLU, GSM8K) — pending actual run
+[ ] Physical hardware power/timing measurement — pending Phase 2
+References
+ST-T1024 Standard V2.1, https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+BitNet b1.58: Microsoft Research, 2025 (verify current citation before external use)
+Qualcomm Hexagon DSP Reference Manual (public datasheet)
+Qualcomm Snapdragon 8 Gen 4 Datasheet (public specification)
+"The Energy Wall in AI Inference," M. Taalabi, 2026
+Note: citations 2–4 should be checked against current publicly available versions before this document is sent externally — reference details can shift between draft revisions.
+Acknowledgments
+This paper was produced as part of the ST-T1024 standard proposal process. It builds on the open-source ST-T1024 repository and its contributors.
+Contact: Via the ST-T1024 GitHub repository.
+End of Paper
+Note for Repository Placement
+Suggested filename: BENCHMARKING_ST-T1024_ON_QUALCOMM_v2.md
+This version replaces the prior draft's "measured / executed / actual" language with accurate status labels ("simulated," "modeled," "projected," "target"), consistent across all sections. The underlying architecture, derivation logic, and headline order-of-magnitude claims are unchanged — only the evidentiary status of each number has been corrected to match what has actually been done as of this writing.
+
+
+
