@@ -121,6 +121,14 @@ Sent — early-stage
 Note on "follow-up": the prior version of this document used the term "Recall" for AFNOR and ARSO. That term is ambiguous (could mean a follow-up sent, a response received, or a withdrawal) and has been replaced here with "follow-up sent" to reflect what is actually confirmed: a second outbound contact, not a response.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+ACADEMIC
+Both SSRN papers are derived from the book "Physics of Relationships," published in the New Civilization Blueprint repository (https://github.com/actuing/NEW-CIVILIZATION-BLUEPRINT-), which develops the underlying framework — mutual inductance, conglomerate, notch, and related concepts — in full. The SSRN submissions were an attempt to formalize a subset of that framework for an academic audience; SSRN's rejection reflects a mismatch with that venue's scope, not a withdrawal of the underlying framework, which remains published in that repository.
+SSRN Paper 1 — "Mutual Inductance as a Formal Model of Human Relational Dynamics"
+Abstract ID 7004038 — Submitted 2026-06-29
+Status: REJECTED BY SSRN.
+SSRN Paper 2 — Not submitted. Withdrawn from the submission plan, given SSRN's rejection of Paper 1, which shares the same underlying framework.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 "From WCET to AET (Assured Execution Time): The First Physically Assured Execution Time in AI Inference" — A Position Paper on Deterministic Real-Time AI
 ACADEMIC STATUS
 "From WCET to AET" is published in the ST-T1024 GitHub repository under Apache 2.0. It has not been submitted to RTSS, TECS, or arXiv. Publication in the repository establishes a timestamped, publicly verifiable record of the idea (a real GitHub commit date, checkable by anyone) — this is presented as public disclosure and prior art, not as peer-reviewed or conference-accepted work.
