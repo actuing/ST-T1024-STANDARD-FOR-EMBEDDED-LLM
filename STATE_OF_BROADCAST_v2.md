@@ -2,7 +2,19 @@
 
 
 
+A NOTE ON THE NATURE OF THIS DOCUMENT
 
+This document provides a snapshot of active outreach efforts, not an exhaustive record of all contacts or a complete account of all standards bodies. It exists to give a transparent view of the current state of engagement—not to catalog every interaction or pre-emptively declare a campaign complete.
+
+Outreach is ongoing. This is a living reference, not a final ledger.
+
+— Maintainer
+
+
+
+
+
+---
 
 ST-T1024: STATE OF BROADCAST
 Last updated: 2026-07-22 (Corrected v2)
