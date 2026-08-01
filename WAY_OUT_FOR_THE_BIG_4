@@ -178,9 +178,8 @@ Governments and industries must fund and establish **ST‑T1024 Engineering Scho
 
 ## 10. Conclusion
 
-The energy wall is real. The certification requirements are urgent. The demand for sovereign AI is growing.
+Growing AI deployment is increasing pressure on energy infrastructure, certification processes for safety-critical systems, and demand for sovereign AI capabilities. ST-T1024 is proposed as an open deterministic architecture intended to address these challenges through edge inference. Its accompanying repositories present the design, implementation concepts, and application framework for technical evaluation and independent validation.
 
-**ST-T1024 offers a pragmatic, open, and immediately deployable solution.**
 
 The four paths outlined above provide a framework for integrating deterministic edge AI with existing high-performance computing infrastructure—without abandoning the investments already made.
 
