@@ -1,1 +1,104 @@
 
+
+
+License: Apache-2.0 
+
+
+
+---
+
+
+ST-T1024 MCU Getting Started Guide
+Build Your First Deterministic AI Prototype
+
+
+Objective
+This guide shows how to move from the ST-T1024 specification to a first working MCU prototype.
+
+
+The goal:
+Run → Understand → Implement → Measure
+
+
+1. Choose Your Platform
+Supported paths:
+ARM Cortex-M
+RISC-V MCU
+FPGA prototype
+Minimum:
+32-bit processor
+Embedded memory
+Debug interface
+
+
+2. Prepare the Environment
+Install:
+Compiler toolchain
+Debug tools
+Python emulator environment
+Git
+
+
+3. Clone the Repository
+git clone https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM.git
+
+
+4. Run the Reference Emulator
+Before hardware:
+python3 improved_st_t1024_v2.1.py
+Verify:
+deterministic execution
+FSM sequence
+tile routing
+output consistency
+
+
+5. Build the Minimal MCU Version
+Start with:
+FSM scheduler
+One domain tile
+Ternary operations
+Input/output interface
+Do not begin with the complete 1024-tile system.
+
+
+6. First Hardware Test
+Measure:
+Flash usage
+SRAM usage
+Execution cycles
+Power consumption
+Record:
+MCU model
+Clock frequency
+Compiler version
+Results
+
+
+7. Move to the Full Implementation Guide
+After the first prototype:
+→ ARM optimization
+→ RISC-V optimization
+→ Custom instructions
+→ Power gating
+→ Certification analysis
+
+
+
+First Mission
+One MCU. One engineer. One working prototype.
+
+The first implementation creates the foundation for everything that follows.
+
+This document would act as the "front door" specifically for embedded engineers, while the larger MCU Implementation Guide remains the technical reference manual.
+
+
+
+---
+
+
+
+
+
+
+
