@@ -165,7 +165,7 @@ hazard analysis, and documentation differ. Certification in one domain accelerat
 certification in others.
 ---
 7. CONCLUSION: THE QUADRUPLE FOUNDATION
-ST-T1024 is the first AI architecture to:
+ To the author's knowledge, ST-T1024 is the first AI architecture to:
 · ✅ ISO 26262 — Satisfy the technical requirements for automotive functional safety
 · ✅ IEC 61508 — Provide a credible path to SIL 3
 · ✅ DO-178C — Fit the aerospace standard as written
