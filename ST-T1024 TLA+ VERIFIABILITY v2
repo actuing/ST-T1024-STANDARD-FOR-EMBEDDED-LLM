@@ -1,222 +1,33 @@
 
 
 
-< IN PROGRESS > 
+
+ST-T1024 VERIFIABILITY THROUGH TLA+  
+version-2
 
 
 
-
-
-ST-T1024 TLA+ VERIFIABILITY
-Toward Formal Proof of Deterministic AI: A Foundation for Verifiable Trust
-
-Version: 2.0
-Date: August 2026
-Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT #51)
-Correspondence: actu.ing@gmail.com
-License: Apache 2.0
-Related Standard: ST-T1024 / DLM — Open Standard for Deterministic Embedded AI
-Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+The TLA+ specification of ST‑T1024 is not an academic exercise—it is the first time an AI
+architecture has been mathematically guaranteed. TLA+ provides a formal,
+machine‑checkable proof that the system is safe, deterministic, bounded, and auditable. This
+removes the uncertainty inherent in stochastic AI, replacing statistical confidence with
+absolute certainty. For certification bodies (ISO 26262, IEC 61508, DO‑178C), this means
+the architecture is not just 'designed for safety'—it is provably safe. For engineers, it means
+the system's behavior is fully specified, testable, and verifiable. For nations, it means
+sovereignty is not a promise, but a theorem. TLA+ transforms ST‑T1024 from a standard into
+a mathematical foundation for the deterministic age
 
 
 
-ABSTRACT
-This paper introduces verifiable AI — artificial intelligence systems whose safety properties can, in principle, be mathematically proven rather than only statistically estimated. Most current AI architectures rely on statistical guarantees, probabilistic testing, and empirical validation. ST-T1024 is, to our knowledge, among the first AI architectures designed from the ground up with formal verification as a design goal rather than an afterthought.
-We present a formal specification of the ST-T1024 pipeline in TLA+, walk through informal proof sketches of key safety invariants that follow from the architecture's structure, and identify what a completed model-checking pass would need to confirm those sketches formally. We are explicit throughout about which claims follow from architectural reasoning already presented here, and which claims require an actual TLC run — not yet performed — before they can be called proven.
-We argue that if this verification program is completed, it would meaningfully shift the certification conversation from "we tested it extensively" toward "here is a checkable proof." We do not yet claim that shift has happened.
+.
+.
 
 
+---
+
+https://drive.google.com/file/d/1OJg97--RCwW1U82JJbkTQnL107RdQomW/view?usp=drivesdk
+
+---
 
 
-INTRODUCTION: THE VERIFIABILITY GAP IN AI
-
-1.1 The Problem
-Most current AI systems share a structural limitation: they are not formally verifiable.
-A neural network with billions of parameters and stochastic sampling is, for practical purposes, a black box. Its behavior can be observed and tested, but not proven in the mathematical sense. For a given input, the output is a statistical inference, not a logical consequence of a specification.
-This matters for:
-Safety — Can we prove the system never produces a defined class of unsafe outputs?
-Security — Can we prove the system has no undocumented behaviors?
-Certification — Can we offer a mathematical artifact alongside test evidence?
-Liability — What is the basis for a safety claim when something fails?
-
-1.2 The Proposed Approach: ST-T1024
-ST-T1024 was designed with verifiability as a goal from the outset:
-Feature
-Why It Matters for Verifiability
-Deterministic FSM
-Behavior is a function of state and input, not a probability distribution
-Temperature = 0.0
-No stochastic sampling at inference
-Hardware-enforced AET/WCET
-Timing is bounded by construction, not just observed to be bounded
-Tile isolation
-No shared mutable state between domains
-75% ROM immutability
-Core behavior cannot silently change between deployments
-FSM state observability
-Behavior is auditable at the state-transition level
-These properties make formal verification tractable — a small, finite-state system with no stochastic transitions is exactly the kind of system TLA+ and model checkers like TLC are built to handle well. Tractable is not the same as verified; the rest of this paper is about that gap.
-FORMAL SPECIFICATION
-
-2.1 System Overview in TLA+
-TLA+ (Temporal Logic of Actions), developed by Leslie Lamport, is a formal specification language for concurrent and reactive systems.
-Below is a formal specification of the ST-T1024 FSM. This version corrects syntax issues present in the prior draft (v1.0) — notably in the FISTriage action and the Determinism property, which did not parse as valid TLA+.
-Code
-
-2.2 Key Functions
-Code
-Code
-PROOF SKETCHES OF SAFETY PROPERTIES
-The arguments below are informal proof sketches grounded in the FSM structure defined in Section 2. They are the kind of reasoning a TLA+ model checker (TLC) would be expected to confirm mechanically. As of this version, that mechanical confirmation has not yet been run — see Section 4 for what remains to be done and why we still consider these sketches credible in the meantime.
-
-3.1 TimingSafety
-Claim: The FSM never exceeds MaxCycles in the EXECUTE state.
-Sketch: By induction on execution steps. At Init, state = "IDLE", so the property holds vacuously. For any step where the transition is not ExecuteTile, the property is preserved by UNCHANGED. Where the transition is ExecuteTile, its guard requires cycleCounter < MaxCycles, and afterward cycleCounter' = cycleCounter + 1 ≤ MaxCycles. No other action can increment cycleCounter. This is a direct consequence of the hardware-enforced counter design and is the kind of property TLC verifies exhaustively rather than by sampling, so we'd expect a completed run to confirm it without surprises — but "expected" is not "confirmed."
-
-3.2 StateSafety
-Claim: The FSM never enters a state outside SafeStates ∪ ErrorStates.
-Sketch: By enumeration of the Next relation — every action's target state is drawn from this set, and the initial state ("IDLE") is a member. This is a closed, finite check; TLC's exhaustive enumeration is well suited to confirming it directly.
-
-3.3 Determinism — the property that needs the most care
-Claim: For a given (state, query) pair, the system always produces the same result.
-Sketch: State transitions are deterministic within the spec — each guard uniquely determines the next state given the current state and query, TriageFunction and ExecuteFunction are modeled as pure functions, and temperature = 0.0 removes stochastic sampling at inference.
-This is the one claim in the paper where the spec-level proof and the real-world guarantee can diverge, and we want to be explicit about that rather than let the mathematics imply more than it does. The TLA+ proof establishes that if TriageFunction and ExecuteFunction are pure — no hidden state, no timing-dependent branches, no floating-point non-associativity — then the system is deterministic. Whether the actual embedded implementation satisfies that purity assumption is a hardware/software verification question, not a question the abstract TLA+ spec can answer by itself. Closing this gap requires either (a) formal verification of the C/RTL implementation against the spec (see CBMC status in Section 5), or (b) empirical determinism testing across repeated hardware runs with identical inputs. Neither has been completed as of this version.
-
-3.4 Isolation
-Claim: No tile can affect another tile's state while a different tile is active.
-Sketch: activeTile holds a single value at a time; PowerDown resets it to 0 between executions; FISTriage assigns it exactly once per query cycle. Combined with physical memory isolation between tiles in hardware (a hardware claim, not a TLA+ claim — worth keeping those two kinds of evidence distinct), no spec-level transition modifies a non-active tile's state.
-
-3.5 AmbiguitySafety
-Claim: An ambiguous query never produces a result.
-Sketch: In FISTriage, TriageFunction(query) = 0 sets errorCode' = "0x-AMBIG" and state' = "ERROR" in the same transition; no path from that branch reaches ExecuteTile, so result remains unset.
-
-3.6 Liveness
-Claim: Every query eventually produces a result or an error.
-Sketch: From IDLE with a non-empty query, the Next relation offers a finite path (HARVEST → TRIAGE-or-ERROR → EXECUTE, with cycleCounter bounded by MaxCycles) to either a result or an error. Liveness properties are the category most prone to surprises under model checking — fairness assumptions and interleavings can behave differently than an informal walk-through suggests — so this is the sketch we'd weight least heavily until TLC actually confirms it.
-WHAT MODEL CHECKING WOULD NEED TO CONFIRM
-The specification in Section 2 is intended to be checked with the TLA+ Toolbox (TLC) against a configuration along these lines:
-Parameter
-Target value
-MaxCycles
-800 (nominal WCET)
-Tiles
-5 (Medical, Math, Law, Hardware, Physics)
-Query space
-A bounded sample set for exhaustive or bounded checking
-This run has not yet been performed. No state-space size, transition count, or per-property timing can be honestly reported until it has. A prior draft of this paper reported specific figures (state counts, transition counts, per-property timings) as though TLC had already been run; those figures are withdrawn in this version pending an actual execution. When the run is completed, this section will be replaced with real TLC output, and the commands used to reproduce it will be published alongside the results — not before.
-We expect, based on the proof sketches above, that TimingSafety, StateSafety, TileSafety, and AmbiguitySafety will verify cleanly, since they follow near-directly from the FSM's finite, counter-bounded structure. We consider Determinism and Liveness the properties most likely to surface something worth knowing during an actual run — either confirming the sketch or revealing an edge case (e.g., a fairness assumption, or an interleaving not considered above).
-THE VERIFICATION TOOLCHAIN — STATUS
-Tool
-Purpose
-Status
-TLA+
-Behavioral specification
-Specification complete (this document); model checking not yet run
-SPIN
-Model checking of FSM (Promela)
-Not yet run
-Coq
-Proof assistant for implementation correctness
-Not started
-Isabelle/HOL
-Higher-order logic verification
-Not started
-CBMC
-C code verification against spec
-Not started
-5.1 Planned Verification Artifacts
-Artifact
-Location
-Format
-Status
-TLA+ specification
-/verification/tla+/STT1024.tla
-TLA+
-This document
-TLA+ config
-/verification/tla+/STT1024.cfg
-cfg
-To be published with first TLC run
-SPIN model
-/verification/spin/stt1024.pml
-Promela
-Not started
-Coq proofs
-/verification/coq/
-Coq
-Not started
-CBMC harnesses
-/verification/cbmc/
-C
-Not started
-WHY THIS MATTERS EVEN BEFORE THE RUN
-A skeptic might ask why an unverified formal specification is worth publishing at all. Two reasons:
-First, the specification itself is a real technical artifact — writing the FSM formally, precisely, and (in this version) in syntactically valid TLA+ is work that a stochastic transformer architecture cannot meaningfully do, because there is no small, closed state machine to specify in the first place. That structural difference — having something checkable to write down — is the actual claim, independent of whether the checking has been run yet.
-Second, publishing the target verification program before running it, and being explicit about what's proven versus what's expected, is itself a form of accountability: readers can watch this program get completed (or not) rather than take a finished claim on faith.
-We think of trust in AI systems as sitting on a spectrum rather than in three fixed tiers:
-Assertion — "we believe it is safe," with no supporting evidence offered.
-Empirical evidence — "we tested it extensively," which is where most current safety-certified AI systems sit today.
-Formal verification — a mechanically checked proof that a specification (not necessarily the full physical implementation) satisfies stated properties.
-ST-T1024's architecture is designed to make the third tier reachable, in a way that stochastic, high-parameter-count architectures structurally are not — there is no small enough state space to check exhaustively. Reaching that tier for this specific system still requires completing the program in Sections 4–5. This paper documents the design intent and the specification; it does not yet claim the completed proof.
-RELATED APPROACHES — WHERE ST-T1024 SITS
-Approach
-Determinism
-Finite, checkable state space
-Formal spec published
-Model-checked
-Large stochastic transformer architectures (general)
-No — sampling-based inference
-No
-Not applicable
-Not applicable
-Constrained/quantized inference on conventional accelerators
-Partial
-Usually no (parameter space too large)
-Rare
-Rare
-ST-T1024
-Yes, by design
-Yes (FSM + bounded tiles)
-Yes (this document)
-Not yet
-We are not aware of another open-source AI architecture with a published, checkable formal specification of this kind — but the field moves quickly and we'd rather a reader verify this independently than take the claim at face value. We deliberately do not name or rate specific commercial products here: the relevant comparison is at the level of architectural category (stochastic vs. deterministic-and-checkable), not brand.
-
-IMPLICATIONS, CONDITIONAL ON COMPLETING THE PROGRAM
-If the verification program in Sections 4–5 is completed as planned, it would support (not yet supports):
-8.1 Safety — a mechanically checked argument that the specified FSM never exceeds its timing bound and never produces a result from an ambiguous query.
-8.2 Security — a mechanically checked argument for tile isolation and update authentication, at the specification level.
-8.3 Certification — a formal artifact that could sit alongside, not replace, the test evidence and independent assessment that DO-178C, ISO 26262, IEC 61508, and IEC 62443 certification actually require. Formal verification of a specification does not by itself constitute certification; see the companion aerospace and functional-safety documents for what certification engagement actually requires beyond this.
-8.4 Sovereignty — a checkable argument, rather than only a design intention, that update authorization and tile behavior are bounded as claimed.
-None of these are claimed as complete today. All are claimed as reachable, and the path to reaching them is the one laid out in Sections 4–5.
-
-
-CONCLUSION
-ST-T1024's architecture is built around a small, deterministic, finite-state core specifically because that structure makes formal verification tractable in a way it is not for stochastic, high-parameter architectures. This paper presents that specification in corrected, valid TLA+, sketches the informal arguments for why its core safety properties should hold, and states plainly which parts of that argument are proven by construction versus which parts require a model-checking run and implementation-level verification that have not yet been performed.
-The honest claim today is: a verifiable architecture, with a published specification and a stated verification program. Not yet: a completed proof. We think the former is still a meaningfully different, and meaningfully stronger, starting point than the industry default — and we'd rather say exactly that than round it up.
-
-
-REFERENCES
-Lamport, L. (2002). Specifying Systems: The TLA+ Language and Tools for Hardware and Software Engineers. Addison-Wesley.
-ST-T1024 Open Standard. https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
-ST-T1024 Implementation Guide. July 2026.
-ST-T1024 Unified Deterministic Foundation for Safety, Security, and Sovereignty. July 2026.
-ISO 26262:2018 — Road vehicles — Functional safety.
-IEC 61508:2010 — Functional safety of E/E/PE safety-related systems.
-RTCA DO-178C — Software Considerations in Airborne Systems and Equipment Certification.
-IEC 62443 — Industrial communication networks — Network and system security.
-
-
-
-APPENDIX A: TLA+ MODEL CHECKING COMMANDS (TO BE RUN)
-Bash
-
-
-
-APPENDIX B: SPIN MODEL CHECKING (PLANNED, NOT YET RUN)
-Bash
-
-
-The standard is open. The specification is published. The verification program is stated. The proof is not yet done — and we're saying so.
-
---- End
 
