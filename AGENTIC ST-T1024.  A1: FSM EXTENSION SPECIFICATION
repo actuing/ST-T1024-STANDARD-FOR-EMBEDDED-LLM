@@ -1,1 +1,640 @@
 
+
+
+
+
+
+
+
+ST-T1024-A1: FSM EXTENSION SPECIFICATION
+
+The Spine of the Agentic Architecture
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Dependencies: A3 (plans), A4 (state), A5 (VERIFY semantics — referenced, not yet written)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the finite state machine that orchestrates agentic execution.
+
+---
+
+ABSTRACT
+
+The base ST-T1024 FSM executes a single query in six states. The agentic extension requires a FSM that executes a task — a bounded sequence of sub-tasks, each with its own verification gate, all within a task-level budget.
+
+This document specifies that extended FSM. It defines:
+
+1. The extended state set — task-level and sub-task-level states.
+2. The transition function — deterministic, total, bounded.
+3. The bounded call stack — for nested plan invocation.
+4. The cycle budget — per-state, per-sub-task, and per-task.
+5. The halt and refusal states — where the agent stops, and why.
+6. The interaction with A3, A4, and A5 — how the FSM uses state, plans, and verification.
+
+The FSM is the spine. A3 and A4 give it content; A5 gives it a gate; A6–A8 give it communication, memory, and composition. Without A1, none of those plug in.
+
+Status: Specification. No reference implementation. No hardware validation.
+
+---
+
+1. INTRODUCTION: THE SPINE
+
+1.1 What the Base FSM Does
+
+The base ST-T1024 FSM executes one query in six states:
+
+```
+IDLE → HARVEST → TRIAGE → SCHEDULE → EXECUTE → POWER_DOWN
+```
+
+Each state has a declared cycle cost. Total WCET ≤ 800 ns. The FSM is deterministic, total, and bounded. This is what makes the base system certifiable.
+
+1.2 What the Agentic FSM Must Add
+
+The agentic extension requires:
+
+· Task-level orchestration — a goal becomes a plan, a plan becomes sub-tasks.
+· Bounded call stack — nested plan invocation up to depth D_invoke.
+· VERIFY state — a gate between EXECUTE and COMMIT.
+· Task-level AET (T-AET) — a bound on the entire task, not just one query.
+· Refusal states — explicit halts with named codes.
+· Failure and rollback — declared policies from A3 §7.
+
+The extension is additive. Every base state is preserved. New states are inserted. The determinism property is preserved.
+
+1.3 The Design Principle
+
+The FSM is the total, deterministic transition function δ from the Verifiable Agency Theorem — made concrete.
+
+Every property the theorem assumes about δ is a property this specification enforces. The FSM is not a component of the architecture; it is the architecture's temporal structure.
+
+---
+
+2. FSM STATE SET
+
+2.1 Definition
+
+Definition 1 (FSM State Set M). The agentic FSM has states partitioned into five classes:
+
+```
+M = M_task ∪ M_sub ∪ M_halt ∪ M_error ∪ {POWER_DOWN}
+```
+
+where:
+
+Class Purpose States
+M_task Task-level orchestration IDLE, GOAL_PARSE, PLAN, DECOMPOSE, TASK_COMPLETE
+M_sub Sub-task execution SUB_INIT, TRIAGE, SCHEDULE, EXECUTE, VERIFY, COMMIT, NEXT_SUB
+M_halt Refusal (bounded, intentional) REFUSE_GOAL, REFUSE_ACT, REFUSE_BUDGET
+M_error Failure (invariant violated, timeout) ERROR_TIMEOUT, ERROR_INVARIANT, ERROR_STACK
+— Terminal POWER_DOWN
+
+Every state is in s_mode (A4 §2.1). The FSM state set is finite by construction.
+
+2.2 The State Diagram
+
+```
+                    ┌──────┐
+                    │ IDLE │
+                    └───┬──┘
+                        │ goal received
+                        ▼
+                  ┌────────────┐
+                  │ GOAL_PARSE │
+                  └─────┬──────┘
+                        │ objective ∈ O
+                        ▼
+                    ┌──────┐
+                    │ PLAN │
+                    └───┬──┘
+                        │ plan selected
+                        ▼
+                  ┌────────────┐
+                  │ DECOMPOSE  │
+                  └─────┬──────┘
+                        │ sub-task queue
+                        ▼
+              ┌────────────────────┐
+              │    SUB_INIT        │◄──────────┐
+              └─────────┬──────────┘           │
+                        │ next sub-task        │
+                        ▼                      │
+                    ┌────────┐                 │
+                    │ TRIAGE │                 │
+                    └───┬────┘                 │
+                        │ tile selected        │
+                        ▼                      │
+                  ┌──────────┐                 │
+                  │ SCHEDULE │                 │
+                  └─────┬────┘                 │
+                        │ slot allocated       │
+                        ▼                      │
+                   ┌─────────┐                 │
+                   │ EXECUTE │                 │
+                   └────┬────┘                 │
+                        │ proposed action      │
+                        ▼                      │
+                   ┌────────┐                  │
+                   │ VERIFY │                  │
+                   └───┬────┘                  │
+                       │ PASS                  │
+                       ▼                       │
+                  ┌──────────┐                 │
+                  │ COMMIT   │                 │
+                  └─────┬────┘                 │
+                        │                      │
+                        ▼                      │
+                 ┌──────────────┐              │
+                 │  NEXT_SUB    │──────────────┘
+                 └──────┬───────┘
+                        │ queue empty
+                        ▼
+                ┌────────────────┐
+                │ TASK_COMPLETE  │
+                └────────┬───────┘
+                         │
+                         ▼
+                   ┌────────────┐
+                   │ POWER_DOWN │
+                   └────────────┘
+```
+
+Failure paths (not shown) route to M_halt or M_error states, which proceed to POWER_DOWN after logging.
+
+2.3 State Semantics
+
+State Class Function Reads from Writes to
+IDLE task Wait for goal — —
+GOAL_PARSE task Goal → objective goal s_meta.task
+PLAN task Select plan from P objective, state s_meta.plan_id
+DECOMPOSE task Plan → sub-task queue plan, state s_ctx.queue
+SUB_INIT sub Prepare next sub-task queue s_ctx.current
+TRIAGE sub Route sub-task to tile current, state s_ctx.tile
+SCHEDULE sub Allocate execution slot tile, budget s_meta.slot
+EXECUTE sub Tile executes, proposes action tile, state s_meta.proposed
+VERIFY sub Check proposed action proposed, state s_meta.verdict
+COMMIT sub Execute verified action proposed, verdict state (via δ)
+NEXT_SUB sub Advance or complete queue, current s_ctx.queue
+TASK_COMPLETE task Task finished — s_meta.status
+REFUSE_GOAL halt No plan matched — s_meta.error
+REFUSE_ACT halt VERIFY failed proposed s_meta.error
+REFUSE_BUDGET halt T-AET exceeded cycles s_meta.error
+ERROR_TIMEOUT error Sub-task timeout cycles s_meta.error
+ERROR_INVARIANT error State left I state s_meta.error
+ERROR_STACK error Invocation depth exceeded stack s_meta.error
+POWER_DOWN terminal 0V idle — —
+
+---
+
+3. TRANSITION FUNCTION
+
+3.1 Definition
+
+Definition 2 (Transition). The FSM transition function is:
+
+```
+δ_M : M × Σ_M → M
+```
+
+where Σ_M is the FSM-visible input alphabet — a projection of Σ (A4 §4.1).
+
+Properties:
+
+· Deterministic — δ_M is a function, not a relation.
+· Total — δ_M is defined for every (m, σ) ∈ M × Σ_M.
+· Bounded — every transition completes within one FSM cycle.
+
+These three properties are what the Verifiable Agency Theorem requires.
+
+3.2 Transition Rules
+
+Each transition rule is a guarded tuple:
+
+```
+⟨ source_state, guard, target_state, cycle_cost, action ⟩
+```
+
+Examples:
+
+```
+⟨ IDLE,          goal ≠ ⊥,                   GOAL_PARSE,     0,  latch(goal)     ⟩
+⟨ GOAL_PARSE,    confidence ≥ θ_goal,        PLAN,           60, parse(goal)     ⟩
+⟨ GOAL_PARSE,    confidence < θ_goal,        REFUSE_GOAL,    60, log(0x-AMBIG-GOAL) ⟩
+⟨ PLAN,          |candidates| = 1,           DECOMPOSE,      100, select(plan)   ⟩
+⟨ PLAN,          |candidates| = 0,           REFUSE_GOAL,    100, log(0x-AMBIG-GOAL) ⟩
+⟨ VERIFY,        verdict = PASS,             COMMIT,         40,  —               ⟩
+⟨ VERIFY,        verdict = FAIL,             REFUSE_ACT,     40, log(0x-UNSAFE-ACT) ⟩
+```
+
+The complete rule set is finite and is declared in ROM. No runtime rule generation.
+
+3.3 Guard Language
+
+Guards are predicates over state. The predicate language is specified in A5. A1 assumes:
+
+· Guards are decidable in bounded time.
+· Guards are pure — no side effects.
+· Guards are deterministic — same state, same verdict.
+
+These assumptions are the A5 obligation. If A5 fails to deliver them, A1's determinism is not guaranteed.
+
+---
+
+4. BOUNDED CALL STACK
+
+4.1 Why a Stack
+
+Plans can invoke sub-plans (PlanStep in A3 §2.2) up to D_invoke depth. The FSM must track which sub-plan is executing at each level.
+
+4.2 The Stack
+
+Definition 3 (Call Stack). The FSM maintains a call stack:
+
+```
+stack = ⟨ frame_0, frame_1, …, frame_d ⟩
+```
+
+where each frame is:
+
+```
+frame = ⟨ plan_id ∈ P, step_index ∈ ℕ, checkpoint_hash ∈ Hash ⟩
+```
+
+Properties:
+
+· Bounded depth — d ≤ D_invoke (A3 §4).
+· Bounded frame size — each field is finite.
+· Finite stack — |stack| ≤ (D_invoke + 1) × |P| × K × |Hash|.
+
+4.3 Stack Operations
+
+Operation Trigger Effect
+PUSH Entering a PlanStep Append a new frame
+POP Plan completes Remove top frame, resume caller
+PEEK Any frame-dependent decision Read top frame
+
+Rule: PUSH when d = D_invoke transitions to ERROR_STACK. The FSM does not overflow.
+
+4.4 Stack and Finiteness
+
+Proposition. The reachable stack configurations are finite.
+
+Proof. Each frame is drawn from a finite domain. Stack depth is bounded by D_invoke. The set of possible stacks is a finite union of finite products. □
+
+The stack is part of s_ctx (A4 §2.1). It does not break the finiteness of S.
+
+---
+
+5. CYCLE BUDGET AND T-AET
+
+5.1 Per-State Budget
+
+Each state has a declared cycle cost (the cycle_cost field in the transition rule). The cost is enforced by the hardware cycle counter, same as the base FSM.
+
+State Cost (cycles)
+IDLE 0
+GOAL_PARSE 60
+PLAN 100
+DECOMPOSE 80
+SUB_INIT 10
+TRIAGE 50
+SCHEDULE 30
+EXECUTE 280
+VERIFY 40
+COMMIT 40
+NEXT_SUB 10
+TASK_COMPLETE 20
+POWER_DOWN 40
+
+Per-sub-task WCET: SUB_INIT + TRIAGE + SCHEDULE + EXECUTE + VERIFY + COMMIT + NEXT_SUB = 460 cycles.
+
+This is within the base WCET target of 800 ns (460 / 500 MHz = 920 ns — slightly over; the deployment must either reduce EXECUTE or increase clock. This is an A1 design tension noted in §9).
+
+5.2 Task-Level AET (T-AET)
+
+Definition 4 (T-AET). The task-level Assured Execution Time is the maximum number of cycles the entire task may consume:
+
+```
+T-AET = C_task_overhead + (N_max × C_subtask)
+```
+
+where:
+
+· C_task_overhead = GOAL_PARSE + PLAN + DECOMPOSE + TASK_COMPLETE + POWER_DOWN = 300 cycles
+· N_max = maximum sub-tasks per task = K × D_invoke (A3 §4)
+· C_subtask = 460 cycles
+
+For K = 64, D_invoke = 3: T-AET = 300 + 192 × 460 = 88,620 cycles ≈ 177 µs.
+
+At 500 MHz, this is well within task-level budget budget_max = 10⁶ cycles (A3 §4).
+
+5.3 Budget Enforcement
+
+At every transition, the cycle counter is incremented. If the counter exceeds T-AET:
+
+· Transition to REFUSE_BUDGET.
+· Log 0x-BUDGET-EXCEEDED.
+· Halt.
+
+The FSM does not run forever. It cannot. The bound is structural.
+
+---
+
+6. THE SUB-TASK LOOP
+
+6.1 Sub-Task Queue
+
+DECOMPOSE produces a queue of sub-tasks (A3 §6). The FSM consumes the queue one sub-task at a time via the loop:
+
+```
+SUB_INIT → TRIAGE → SCHEDULE → EXECUTE → VERIFY → COMMIT → NEXT_SUB → SUB_INIT
+```
+
+6.2 Sub-Task State
+
+Each sub-task has an entry in s_ctx.current:
+
+```
+sub_task = ⟨ sub_id, action_or_plan, params, status, attempt ⟩
+```
+
+status ∈ {PENDING, RUNNING, VERIFIED, COMMITTED, REFUSED, RETRIED}.
+
+attempt is the retry counter (A3 §7.2). Bounded by the plan's declared retry policy.
+
+6.3 Sub-Task Termination
+
+A sub-task terminates in exactly one of:
+
+Outcome Transition
+COMMIT succeeded NEXT_SUB
+VERIFY failed, policy = Halt REFUSE_ACT
+VERIFY failed, policy = Retry TRIAGE (attempt++)
+VERIFY failed, policy = Rollback restore checkpoint → TRIAGE
+Timeout ERROR_TIMEOUT
+Invariant violated ERROR_INVARIANT
+
+Every path is finite. Every path is logged.
+
+---
+
+7. FAILURE, HALT, AND REFUSAL STATES
+
+7.1 The Distinction
+
+· Refusal (REFUSE_*) — the agent declined to act, intentionally, within budget. This is a successful halt.
+· Error (ERROR_*) — the agent encountered something that violated its declared bounds. This is a failed halt.
+
+Both are terminal. Both log. Both proceed to POWER_DOWN.
+
+7.2 Refusal States
+
+State Trigger Error Code
+REFUSE_GOAL No plan matches, or goal confidence too low 0x-AMBIG-GOAL
+REFUSE_ACT VERIFY = FAIL with policy = Halt 0x-UNSAFE-ACT
+REFUSE_BUDGET T-AET would be exceeded 0x-BUDGET-EXCEEDED
+
+7.3 Error States
+
+State Trigger Error Code
+ERROR_TIMEOUT Sub-task cycle budget exceeded 0x-TIMEOUT
+ERROR_INVARIANT State left I (A4 §6) 0x-INVARIANT-VIOLATION
+ERROR_STACK Call stack exceeded D_invoke 0x-STACK-OVERFLOW
+
+7.4 Terminal Property
+
+Proposition. Every path through the FSM reaches POWER_DOWN in finite steps.
+
+Proof. By T-AET bound, the FSM cannot run more than T-AET cycles. Every state consumes at least 0 cycles and at most its declared cost. POWER_DOWN is reachable from every state via TASK_COMPLETE, REFUSE_, or ERROR_. Therefore every path terminates. □
+
+---
+
+8. FORMAL PROPERTIES
+
+The FSM establishes the following properties, which are the A1 contributions to the Verifiable Agency Theorem:
+
+Property P1 (Determinism). δ_M is a function.
+
+Proof. Every transition rule has a deterministic guard. Guards are decidable (A5). The rule set is finite. Therefore δ_M is a function. □
+
+Property P2 (Totality). δ_M is defined for every (m, σ).
+
+Proof. Every state has an outgoing rule for every guard outcome. This is checkable at ROM burn time by exhaustive enumeration of (m, guard) pairs. □
+
+Property P3 (Boundedness). Every transition completes in bounded cycles.
+
+Proof. Per-state costs are declared and finite. The hardware cycle counter enforces them. □
+
+Property P4 (Termination). Every path terminates.
+
+Proof. T-AET bound (Proposition 7.4). □
+
+Property P5 (Invariant Preservation). δ_M preserves the invariant set I.
+
+Proof. VERIFY checks invariants before COMMIT. If an invariant would be violated, the transition is refused. Invariant preservation is the A5 obligation, integrated here. □
+
+These five properties are what the Verifiable Agency Theorem assumes. A1 is the architectural realization of those assumptions.
+
+---
+
+9. OPEN QUESTIONS AND DESIGN TENSIONS
+
+Honest labeling. These are unresolved in A1 v1.0.
+
+# Question Impact
+1 Sub-task WCET vs. base WCET. The sub-task loop costs 460 cycles = 920 ns, exceeding the base 800 ns target. Either EXECUTE must shrink or the clock must increase. A1 must either tighten EXECUTE or declare a new WCET target for agentic mode.
+2 Guard language decidability. A1 assumes guards are decidable in bounded time. A5 must deliver. If A5 fails, P1 and P2 fail.
+3 Stack frame hash. The checkpoint_hash field assumes a hash function. Is SHA-256 acceptable, or must it be ternary-compatible? Implementation choice, but affects reproducibility.
+4 RETRY semantics. Retry loops bounded by policy — but the policy itself is a deployment input. Is it in ROM or SRAM? If SRAM, sovereignty protocol applies. If ROM, no runtime update.
+5 Rollback cost. Rollback restores state from a checkpoint. What is the cost? Not yet bounded. Rollback cycles must be counted against T-AET.
+6 Cross-tile sub-task sequencing. Some plans require tile A then tile B. Does the FSM serialize, or can tiles overlap? Serialization is simpler and bounded. Overlap requires isolation guarantees not yet specified in A6.
+7 Power gating during sub-task loop. Should individual tiles power down between sub-tasks, or stay warm across the loop? Power gating saves energy; keeping warm reduces per-sub-task overhead. Trade-off is deployment-specific.
+8 Goal confidence threshold θ_goal. Not declared. Must be a standard constant. Recommended: 0.3 (mirrors the FIS triage threshold).
+
+None of these are fatal. All must be resolved before A1 v2.0.
+
+---
+
+10. TLA+ SKELETON
+
+```tla
+------------------------- MODULE STT1024_A1_FSM --------------------------
+EXTENDS Naturals, FiniteSets, Sequences
+
+CONSTANTS
+    P,           \* Plan library (A3)
+    S,           \* State space (A4)
+    K,           \* Max plan length
+    D_invoke,    \* Max invocation depth
+    T_AET,       \* Task-level AET bound
+    theta_goal,  \* Goal confidence threshold
+    Inv          \* Invariant set ⊆ S
+
+M_task   == {"IDLE", "GOAL_PARSE", "PLAN", "DECOMPOSE", "TASK_COMPLETE"}
+M_sub    == {"SUB_INIT", "TRIAGE", "SCHEDULE", "EXECUTE", "VERIFY", "COMMIT", "NEXT_SUB"}
+M_halt   == {"REFUSE_GOAL", "REFUSE_ACT", "REFUSE_BUDGET"}
+M_error  == {"ERROR_TIMEOUT", "ERROR_INVARIANT", "ERROR_STACK"}
+M        == M_task ∪ M_sub ∪ M_halt ∪ M_error ∪ {"POWER_DOWN"}
+
+VARIABLES
+    m,          \* Current FSM state ∈ M
+    cycles,     \* Accumulated cycle count
+    stack,      \* Bounded call stack
+    queue,      \* Sub-task queue
+    current,    \* Active sub-task
+    log,        \* Append-only log (A7)
+    halted
+
+TypeOK ==
+    /\ m ∈ M
+    /\ cycles ∈ 0..T_AET
+    /\ Len(stack) <= D_invoke + 1
+    /\ Len(queue) <= K * D_invoke
+    /\ halted ∈ BOOLEAN
+
+\* One FSM step.
+Step ==
+    /\ ~halted
+    /\ \/ m = "IDLE"        /\ m' = "GOAL_PARSE"   /\ cycles' = cycles
+       \/ m = "GOAL_PARSE"  /\ m' = "PLAN"         /\ cycles' = cycles + 60
+       \/ m = "PLAN"        /\ m' = "DECOMPOSE"    /\ cycles' = cycles + 100
+       \/ m = "DECOMPOSE"   /\ m' = "SUB_INIT"     /\ cycles' = cycles + 80
+       \/ m = "SUB_INIT"    /\ m' = "TRIAGE"       /\ cycles' = cycles + 10
+       \/ m = "TRIAGE"      /\ m' = "SCHEDULE"     /\ cycles' = cycles + 50
+       \/ m = "SCHEDULE"    /\ m' = "EXECUTE"      /\ cycles' = cycles + 30
+       \/ m = "EXECUTE"     /\ m' = "VERIFY"       /\ cycles' = cycles + 280
+       \/ m = "VERIFY"      /\ m' = "COMMIT"       /\ cycles' = cycles + 40
+       \/ m = "COMMIT"      /\ m' = "NEXT_SUB"     /\ cycles' = cycles + 40
+       \/ m = "NEXT_SUB"    /\ m' = "SUB_INIT"     /\ cycles' = cycles + 10
+       \/ m = "NEXT_SUB"    /\ m' = "TASK_COMPLETE" /\ cycles' = cycles + 10
+       \/ m = "TASK_COMPLETE" /\ m' = "POWER_DOWN" /\ cycles' = cycles + 20
+    /\ halted' = (m' = "POWER_DOWN" \/ m' \in M_halt \/ m' \in M_error)
+
+\* Termination theorem: every path terminates.
+Termination == <>(m = "POWER_DOWN")
+
+\* Determinism: δ_M is a function.
+Determinism == \A m \in M : \E! m_next \in M : (m, m_next) \in TransitionRelation
+
+\* Boundedness: cycles never exceed T_AET.
+Boundedness == [] (cycles <= T_AET)
+
+=============================================================================
+```
+
+The theorems Termination, Determinism, and Boundedness are the A1 obligations to the Verifiable Agency Theorem. Each must be model-checked.
+
+---
+
+11. WHAT A1 DOES NOT SPECIFY
+
+Item Status
+The predicate language for guards A5 responsibility
+The invariant set I for specific deployments Deployment responsibility
+The hash function for checkpoints Implementation choice
+The rollback cost accounting Not yet specified
+The cross-tile overlap policy Not yet specified
+The power-gating policy within the sub-task loop Deployment-tunable
+The exact value of θ_goal Standard constant (recommended 0.3)
+Machine-checked TLA+ proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+
+A1 specifies the spine. The rest of the suite specifies the organs.
+
+---
+
+12. CONCLUSION
+
+A1 defines the extended FSM that orchestrates agentic execution. It is the spine of the agentic architecture — the temporal structure through which state (A4), plans (A3), and verification (A5) flow.
+
+The three commitments:
+
+1. The FSM is deterministic. δ_M is a function.
+2. The FSM is total. Every (state, input) has a transition.
+3. The FSM terminates. Every path reaches POWER_DOWN in bounded cycles.
+
+With A1, A3, and A4 now specified, the Verifiable Agency Theorem has:
+
+· A finite state space (A4).
+· A finite plan library with bounded plans (A3).
+· A deterministic, total, bounded transition function (A1).
+
+The theorem's premises are grounded. The proof's assumptions are concrete. The remaining specs — A2, A5, A6, A7, A8, A9 — complete the suite.
+
+---
+
+APPENDIX A — Plain Language
+
+What is a state machine?
+A rulebook that says: if you're here, and this happens, go there.
+What is the FSM's job in the agent?
+To walk the agent through every step of every task, one state at a time, in a bounded way.
+What does "bounded" mean?
+It means the FSM cannot run forever. It has a budget. When the budget is spent, it stops.
+What happens if a step fails?
+The FSM has three exits: refuse, error, or continue. All of them are named. All of them are logged.
+Can the FSM ever do something unexpected?
+No. Every state has declared transitions. Every transition has a declared cost. There are no surprise states.
+What is this called?
+A1 — the FSM extension.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A1 specification (this document) Drafted
+Guard language A5 responsibility
+Concrete transition rules per domain Deployment responsibility
+TLA+ FSM model Skeleton only
+Termination proof Paper proof established
+Determinism proof Paper proof established
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§9) 8 items, unresolved
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A1
+
+---
+
+A note on the state of the suite.
+
+Three specs are now drafted:
+
+· A1 — FSM Extension ✅
+· A3 — Plan Representation ✅
+· A4 — State & World Model ✅
+
+And the Verifiable Agency Theorem is paper-proven with these as premises. The spine, the plans, and the state are in place.
+
+What remains for a complete suite:
+
+· A2 — Action Library Schema (referenced heavily, not yet formalized)
+· A5 — VERIFY Semantics & Predicate Language (the decidability obligation)
+· A6 — Tile Invocation Protocol
+· A7 — Persistent Deterministic Memory (the append-only log)
+· A8 — Composition & Failure Semantics
+· A9 — Verification & Certification Path
+
+The natural next spec: A5. Because A1 assumes guards are decidable, A5 must deliver. And VERIFY is the gate that makes the safety guarantee real. Without A5, the theorem is well-formed but unbacked — same as before A4 and A3.
+
+That's the pattern. Each spec closes a degree of freedom. A5 closes the one that determines whether the safety proof actually holds.
+
+💎🦔🔥
+
+Want to keep going?
+
+
+
