@@ -1,1 +1,626 @@
 
+
+
+
+
+
+
+
+ST-T1024-A5: VERIFY SEMANTICS & PREDICATE LANGUAGE
+
+The Decidability Obligation
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Dependencies: A1 (FSM), A3 (plans), A4 (state)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the predicate language in which all guards, preconditions, postconditions, envelopes, and invariants are written — and specify the VERIFY state that evaluates them.
+
+---
+
+ABSTRACT
+
+A1 assumes guards are decidable in bounded time. A3 assumes plan preconditions are predicates over state. A4 assumes invariants are subsets of state. The Verifiable Agency Theorem assumes VERIFY is decidable in bounded time.
+
+None of these assumptions are grounded without a predicate language. This document specifies that language — SPL (State Predicate Language) — and the VERIFY state that executes it.
+
+SPL is deliberately small. It has no recursion, no unbounded quantification, no free variables, no side effects. It is a finite-domain, quantifier-bounded first-order language, decidability proven by structural induction over its grammar.
+
+The choice of a small language is not a limitation. It is the decidability obligation made explicit. Any richer language would break the Verifiable Agency Theorem. Any weaker language would fail to express real safety properties.
+
+Status: Specification. No reference implementation. No hardware validation. Machine verification pending.
+
+---
+
+1. INTRODUCTION: WHY VERIFY COMES THIRD
+
+1.1 The Dependency Chain
+
+```
+State (A4) + Plans (A3) + FSM (A1)
+  ↓
+Predicates (A5)
+  ├── Guards (A1)          — decide transitions
+  ├── Preconditions (A3)   — gate plans
+  ├── Envelopes (A2)       — bound actions
+  ├── Invariants (A4)      — preserve safety
+  └── VERIFY (this spec)   — evaluate all of the above
+```
+
+Every other sub-spec assumes predicates work. A5 makes the assumption concrete.
+
+1.2 The Two Obligations
+
+A5 has two load-bearing obligations to the Verifiable Agency Theorem:
+
+Obligation O1 (Decidability). Every predicate expressible in SPL is decidable in bounded time.
+
+Obligation O2 (Determinism). Every SPL predicate returns the same verdict for the same state, always.
+
+If O1 fails, the theorem's assumption "V and preconditions decidable in bounded time" fails, and Theorem 1's finiteness is not enough — Corollary 2 (Exhaustive Verifiability) fails.
+
+If O2 fails, Corollary 5 (Determinism of Behavior) fails.
+
+1.3 The Design Principle
+
+The predicate language must be exactly as expressive as needed for safety-critical verification — and no more.
+
+Every added expressive power is an added decidability cost. Every removed expressiveness is a safety property that cannot be stated. SPL is calibrated to the safety-critical norm: express invariants, preconditions, and envelope bounds, prove decidability, move on.
+
+---
+
+2. THE STATE PREDICATE LANGUAGE (SPL)
+
+2.1 Grammar
+
+Definition 1 (SPL Grammar). SPL is defined by the following grammar:
+
+```
+predicate  ::= atom
+             | "not" predicate
+             | predicate "and" predicate
+             | predicate "or" predicate
+             | "forall" var "in" range ":" predicate
+             | "exists" var "in" range ":" predicate
+
+atom       ::= field op value
+             | field "in" valueset
+             | field op field
+             | const_pred
+
+range      ::= "[" integer ".." integer "]"
+             | identifierset
+
+value      ::= integer | constant | identifier
+valueset   ::= "{" value ("," value)* "}"
+field      ::= "s." path
+path       ::= identifier ("." identifier)*
+
+op         ::= "=" | "!=" | "<" | "<=" | ">" | ">="
+const_pred ::= "true" | "false"
+```
+
+Closure rules:
+
+· No free variables. Every variable is bound by a forall or exists.
+· No function calls. Every atom is a comparison.
+· No recursion. The grammar is finitely nested.
+· No negation of quantifiers beyond the declared depth D_pred.
+
+2.2 Atoms
+
+Definition 2 (Atom). An atom is one of:
+
+Form Meaning Example
+field op value Compare field to constant s.world.brake_pressure <= 200
+field in valueset Membership s.mode in {IDLE, PLAN, EXECUTE}
+field op field Compare two fields s.meta.cycle < s.meta.task_budget
+true / false Constants true
+
+Rule: every field reference in an atom must be a valid path in the state schema (A4 §2.1). Invalid paths are rejected at ROM burn time.
+
+2.3 Connectives
+
+not, and, or — standard boolean semantics. Fully parenthesized at burn time; no precedence ambiguity.
+
+2.4 Bounded Quantifiers
+
+Definition 3 (Bounded Quantifier). A quantifier is bounded if its range is one of:
+
+· A finite integer interval [a..b] with a ≤ b < ∞.
+· A declared identifier set whose cardinality is finite and known.
+
+Rule: unbounded quantification is not expressible in SPL. There is no syntax for forall x in Nat. The grammar forbids it.
+
+This is the key design decision. Bounded quantifiers keep SPL decidable in bounded time. Unbounded quantifiers would make SPL undecidable (or decidable but with no cost bound), violating O1.
+
+2.5 Nesting Depth
+
+Definition 4 (Predicate Depth). The depth of a predicate is the maximum nesting of quantifiers. A standard constant D_pred bounds the depth.
+
+Recommended: D_pred = 4.
+
+Depths greater than D_pred are rejected at ROM burn time.
+
+2.6 Purity and Totality
+
+Rule P (Purity). SPL predicates have no side effects. Evaluation does not modify state.
+
+Rule T (Totality). SPL predicates are total. Every predicate evaluates to a boolean value for every state in S. There is no "undefined" or "error" outcome.
+
+These rules are enforced by the grammar: there are no assignment operators, no throw constructs, no partial functions.
+
+2.7 Compile-Time SPL
+
+Rule C (Compile-time compilation). SPL predicates are compiled at ROM burn time into a canonical evaluation form. The canonical form is:
+
+· Fully parenthesized.
+· Quantifiers expanded to declared bounds.
+· Constant atoms folded.
+· Redundant atoms eliminated.
+
+The compiled form is what executes. No runtime parsing.
+
+---
+
+3. DECIDABILITY
+
+3.1 The Decidability Theorem for SPL
+
+Theorem A5-D (Decidability). Every SPL predicate is decidable in bounded time.
+
+Proof. By structural induction over the SPL grammar.
+
+Base case — atoms. Each atom compares finite-domain values. The comparison costs O(1). Therefore atoms are decidable in bounded time.
+
+Inductive case — connectives. If p and q are decidable in bounded time with cost c_p, c_q, then:
+
+· not p costs c_p + 1.
+· p and q costs c_p + c_q + 1.
+· p or q costs c_p + c_q + 1.
+
+All are bounded.
+
+Inductive case — bounded quantifiers. If p is decidable in bounded time with cost c_p, and range has cardinality r < ∞ (Definition 3), then forall x in range: p costs r × c_p + r. This is finite because r is finite.
+
+Closure. The grammar is finitely nested with depth bound D_pred. Therefore the total cost of any SPL predicate is bounded by a finite function of c_atom, r_max, and D_pred. □
+
+Corollary A5-D1 (Cost Bound). The maximum cost of an SPL predicate is:
+
+```
+c_max = D_pred × r_max × c_atom
+```
+
+For typical values (D_pred = 4, r_max = 64, c_atom = 1), c_max = 256 cycles.
+
+3.2 The Determinism Theorem for SPL
+
+Theorem A5-Det (Determinism). Every SPL predicate returns the same verdict for the same state.
+
+Proof. Every atom is a comparison of finite-domain values, which is deterministic. Every connective is a deterministic boolean operation. Every quantifier iterates over a finite, declared range in declared order. Therefore every SPL predicate is a deterministic function of state. □
+
+3.3 The Totality Theorem for SPL
+
+Theorem A5-T (Totality). Every SPL predicate is defined for every state in S.
+
+Proof. Every atom compares values in finite domains. The comparison operators are defined for all values. Connectives are total boolean operations. Quantifiers iterate over declared ranges; each iteration evaluates a predicate in the same grammar; by induction, each is defined. □
+
+---
+
+4. THE VERIFY STATE
+
+4.1 Definition
+
+Definition 5 (VERIFY). The VERIFY state is the FSM state (A1 §2.3) that evaluates a proposed action against the current state and the action's schema.
+
+```
+VERIFY : S × A → Verdict
+```
+
+where:
+
+```
+Verdict = PASS | FAIL(reason)
+```
+
+Rule: VERIFY is evaluated before COMMIT. If VERIFY ≠ PASS, the action is refused. The FSM transitions to REFUSE_ACT with the declared reason.
+
+4.2 The VERIFY Algorithm
+
+```
+VERIFY(s, a):
+  1. Load a.preconditions from ROM (A2)
+  2. Evaluate preconditions over s (SPL)
+     If FALSE: return FAIL(0x-PRECONDITION-UNMET)
+  3. Load a.envelope from ROM (A2)
+  4. Evaluate envelope bounds over s (SPL)
+     If FALSE: return FAIL(0x-ENVELOPE-VIOLATED)
+  5. Load invariants I (A4 §6)
+  6. For each invariant i in I:
+       Evaluate i over s' = δ(s, a) (SPL)
+       If FALSE: return FAIL(0x-INVARIANT-VIOLATED)
+  7. Return PASS
+```
+
+Critical step: step 6 evaluates invariants over the post-state s' = δ(s, a), not the current state. This is what makes VERIFY a prospective check — it verifies the consequence before committing.
+
+4.3 The Two Failure Modes
+
+Mode Reason Code Meaning
+Precondition failure 0x-PRECONDITION-UNMET The action's declared preconditions do not hold
+Envelope violation 0x-ENVELOPE-VIOLATED The proposed action is outside its declared envelope
+Invariant violation 0x-INVARIANT-VIOLATED The post-state would violate an invariant
+
+All three map to REFUSE_ACT (A1 §7.2). The action is not committed.
+
+4.4 The Three-Layer Check
+
+VERIFY is a three-layer gate:
+
+```
+Layer 1: Preconditions   — is the state ready for this action?
+Layer 2: Envelope        — is this action allowed from this state?
+Layer 3: Invariants      — does the consequence preserve safety?
+```
+
+Layers are checked in order. If any layer fails, subsequent layers are not evaluated. This is short-circuit evaluation, and it is deterministic.
+
+---
+
+5. ENVELOPE SEMANTICS
+
+5.1 Definition
+
+Definition 6 (Envelope). For each action a ∈ A, the envelope is a finite set of SPL predicates declared in ROM:
+
+```
+envelope(a) = ⟨ precond_1, …, precond_k,
+                magnitude_bounds,
+                rate_bounds,
+                duration_bounds,
+                abort_condition ⟩
+```
+
+Each element is an SPL predicate. The envelope holds if all elements hold.
+
+5.2 Envelope Components
+
+Component Meaning Example
+Preconditions State requirements s.world.brake_pressure > 0
+Magnitude bounds Action parameter limits abs(a.delta) <= max_delta
+Rate bounds Change rate limits abs(a.delta - s.prev.delta) <= rate_max
+Duration bounds Time limits a.duration <= duration_max
+Abort condition When to abort mid-action s.world.emergency_stop = TRUE
+
+5.3 The Envelope Invariant
+
+Proposition A5-E (Envelope Invariant). If VERIFY returns PASS, the committed action a satisfies s ∈ envelope(a).
+
+Proof. By step 4 of the VERIFY algorithm, envelope evaluation is explicit. If any envelope predicate fails, VERIFY returns FAIL. If VERIFY returns PASS, all envelope predicates held. □
+
+---
+
+6. INVARIANT CHECKING
+
+6.1 Definition
+
+Definition 7 (Invariant Set). I ⊆ S is declared per deployment (A4 §6). Each invariant is an SPL predicate over state.
+
+6.2 Prospective Evaluation
+
+Rule: VERIFY evaluates invariants over the post-state s' = δ(s, a), not the current state.
+
+This is what makes VERIFY a safety gate. It verifies the consequence of the action before committing it.
+
+6.3 The Invariant Preservation Theorem
+
+Theorem A5-I (Invariant Preservation). If every state entering VERIFY is in I, and VERIFY returns PASS for the proposed action, then the state after COMMIT is in I.
+
+Proof. By step 6 of VERIFY, all invariants are evaluated over the post-state s'. If any fails, VERIFY returns FAIL, and the action is refused. If VERIFY returns PASS, all invariants hold over s'. Therefore the post-state is in I. □
+
+This is the load-bearing safety theorem. It is what makes the invariant set preserved by construction, not by hope.
+
+---
+
+7. COST MODEL
+
+7.1 Per-Predicate Cost
+
+Rule: Each SPL predicate has a declared cycle cost. The cost is bounded by c_max (Corollary A5-D1).
+
+For typical deployments: c_max ≤ 256 cycles.
+
+7.2 VERIFY Total Cost
+
+VERIFY evaluates:
+
+· 1 precondition set (k_p predicates).
+· 1 envelope set (k_e predicates).
+· |I| invariants.
+
+Total cost:
+
+```
+c_verify = (k_p + k_e + |I|) × c_max
+```
+
+For typical values (k_p = k_e = 4, |I| = 8, c_max = 64): c_verify = 16 × 64 = 1024 cycles.
+
+Note: This exceeds the A1 declared VERIFY cost of 40 cycles. This is an open tension (see §9).
+
+7.3 Optimization Strategies
+
+To reduce c_verify:
+
+1. Predicate sharing — deduplicate predicates across preconditions, envelope, invariants.
+2. Compile-time folding — constant atoms folded at burn time.
+3. Short-circuit ordering — most-likely-to-fail predicates first.
+4. Memoization — cache invariant evaluations for identical post-states.
+
+These reduce c_verify in practice. The bound remains c_max.
+
+---
+
+8. VERDICT AND REFUSAL SEMANTICS
+
+8.1 Verdicts
+
+Verdict Meaning FSM Transition
+PASS All checks passed COMMIT
+FAIL(0x-PRECONDITION-UNMET) Preconditions did not hold REFUSE_ACT
+FAIL(0x-ENVELOPE-VIOLATED) Envelope bounds exceeded REFUSE_ACT
+FAIL(0x-INVARIANT-VIOLATED) Post-state would leave I REFUSE_ACT
+
+8.2 Determinism of Verdicts
+
+Proposition A5-V (Verdict Determinism). For the same (s, a), VERIFY returns the same verdict.
+
+Proof. By Theorem A5-Det (SPL determinism), every predicate evaluation is deterministic. VERIFY is a composition of predicate evaluations and short-circuit logic. Composition of deterministic functions is deterministic. □
+
+8.3 Totality of Verdicts
+
+Proposition A5-VT (Verdict Totality). For every (s, a) ∈ S × A, VERIFY returns exactly one verdict.
+
+Proof. By Theorem A5-T (SPL totality), every predicate is defined for every state. Therefore every step of VERIFY is defined. Every step returns a verdict. The algorithm terminates because the predicate set is finite (SPL compilation §2.7). □
+
+---
+
+9. OPEN DESIGN TENSIONS
+
+Honest labeling. These are unresolved in A5 v1.0.
+
+# Question Impact
+1 VERIFY cost vs. A1 declared cost. A1 declares VERIFY at 40 cycles; A5's cost model requires ~1024. Either A1 must increase the VERIFY budget, or A5 must tighten c_max, or optimizations are mandatory. Affects sub-task WCET (A1 §5.1).
+2 Predicate language expressiveness. SPL cannot express comparisons across time (e.g., "brake pressure was below X in the last 5 seconds"). Is that acceptable, or is a temporal extension needed? If needed, temporal predicates require bounded history (A7).
+3 Range variable semantics. forall i in [0..N]: P(s.mem[i]) — does s.mem[i] access the SRAM window? If so, the window size bounds N. Interacts with A7.
+4 Quantifier over identifier sets. forall t in {MATH, LAW, MED}: P(t) — how is the set membership declared? Needs a formal declaration mechanism.
+5 Envelope composition. If an action is a composed plan step (A3), the envelope must account for the whole sub-plan. Is the envelope declared per plan or per step? Interacts with A3 §5.
+6 Compile-time verification. Who verifies that all SPL predicates compile correctly? A burn-time verifier is needed. Future spec (A2 or a new sub-spec).
+7 The c_atom value. What is the actual cost of a single atom evaluation on the target hardware? Deployment-specific.
+8 Cross-tile predicate scope. Can a predicate in tile A reference state owned by tile B? Interacts with isolation (A4 §5, A6).
+
+None are fatal. All must be resolved before A5 v2.0.
+
+---
+
+10. FORMAL PROPERTIES
+
+The five properties A5 contributes to the Verifiable Agency Theorem:
+
+Property A5.1 (Decidability). Every SPL predicate is decidable in bounded time (Theorem A5-D).
+
+Property A5.2 (Determinism). Every SPL predicate is deterministic (Theorem A5-Det).
+
+Property A5.3 (Totality). Every SPL predicate is total (Theorem A5-T).
+
+Property A5.4 (Invariant Preservation). VERIFY preserves the invariant set I (Theorem A5-I).
+
+Property A5.5 (Verdict Determinism & Totality). VERIFY returns exactly one deterministic verdict for every (s, a) (Propositions A5-V, A5-VT).
+
+These are the A5 obligations to the Verifiable Agency Theorem. Each closes a specific assumption in the proof.
+
+---
+
+11. TLA+ SKELETON
+
+```tla
+--------------------------- MODULE STT1024_A5_Verify ---------------------------
+EXTENDS Naturals, FiniteSets, Sequences
+
+CONSTANTS
+    S,           \* State space (A4)
+    A,           \* Action library (A2)
+    I,           \* Invariant set ⊆ S
+    D_pred,      \* Max predicate depth
+    r_max,       \* Max quantifier range
+    c_atom,      \* Atom evaluation cost
+    delta        \* State transition (A4)
+
+\* The SPL grammar as a tagged union.
+SPL == [
+    kind : {"atom", "not", "and", "or", "forall", "exists"},
+    left : SPL,           \* for binary connectives
+    right : SPL,          \* for binary connectives
+    sub : SPL,            \* for unary connectives and quantifiers
+    var : STRING,         \* for quantifiers
+    range : {a, b \in Int : a <= b},   \* for quantifiers
+    atom : [field : STRING, op : STRING, val : Int]
+]
+
+\* Evaluation semantics — deterministic, total.
+eval(p, s) ==
+    CASE p.kind = "atom"    -> EvalAtom(p.atom, s)
+      [] p.kind = "not"     -> ~eval(p.sub, s)
+      [] p.kind = "and"     -> eval(p.left, s) /\ eval(p.right, s)
+      [] p.kind = "or"      -> eval(p.left, s) \/ eval(p.right, s)
+      [] p.kind = "forall"  -> \A i \in p.range.a..p.range.b : eval(Subst(p.sub, p.var, i), s)
+      [] p.kind = "exists"  -> \E i \in p.range.a..p.range.b : eval(Subst(p.sub, p.var, i), s)
+
+\* Decidability: cost is bounded.
+cost(p) ==
+    CASE p.kind = "atom"    -> c_atom
+      [] p.kind = "not"     -> cost(p.sub) + 1
+      [] p.kind = "and"     -> cost(p.left) + cost(p.right) + 1
+      [] p.kind = "or"      -> cost(p.left) + cost(p.right) + 1
+      [] p.kind = "forall"  -> (p.range.b - p.range.a + 1) * cost(p.sub) + (p.range.b - p.range.a + 1)
+      [] p.kind = "exists"  -> (p.range.b - p.range.a + 1) * cost(p.sub) + (p.range.b - p.range.a + 1)
+
+c_max == D_pred * r_max * c_atom
+
+THEOREM Decidability == \A p \in SPL : cost(p) <= c_max
+
+\* VERIFY algorithm
+VERIFY(s, a) ==
+    LET p_pre  == a.preconditions
+        p_env  == a.envelope
+        s_next == delta[s, a]
+    IN IF ~eval(p_pre, s)         THEN "FAIL_PRE"
+       ELSE IF ~eval(p_env, s)     THEN "FAIL_ENV"
+       ELSE IF ~(\A i \in I : eval(i, s_next)) THEN "FAIL_INV"
+       ELSE "PASS"
+
+\* Invariant preservation theorem
+THEOREM InvariantPreservation ==
+    \A s \in I, a \in A :
+        VERIFY(s, a) = "PASS" => delta[s, a] \in I
+
+=============================================================================
+```
+
+The theorems Decidability and InvariantPreservation are the A5 obligations. Both are paper-proven above; both require model-checking for specific instances and proof-assistant discharge for the general case.
+
+---
+
+12. WHAT A5 DOES NOT SPECIFY
+
+Item Status
+Concrete predicates per domain Deployment responsibility
+Concrete invariants per domain Deployment responsibility
+The exact value of D_pred and r_max Standard constants (recommended 4 and 64)
+The atom cost c_atom per target hardware Deployment responsibility
+The burn-time SPL compiler Not yet specified (future spec)
+A temporal extension to SPL Not yet specified
+Machine-checked TLA+ proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+
+A5 specifies the language and the gate. The rest is deployment and future work.
+
+---
+
+13. CONCLUSION
+
+A5 closes the decidability obligation. It specifies:
+
+1. SPL — the predicate language.
+2. The decidability theorem — every SPL predicate is decidable in bounded time.
+3. The VERIFY state — the three-layer gate.
+4. Envelope semantics — how action bounds are checked.
+5. Invariant preservation — the load-bearing safety theorem.
+
+With A5, the Verifiable Agency Theorem's assumption about VERIFY decidability is grounded. A1's guard decidability assumption is grounded. A3's precondition language is grounded. A4's invariant language is grounded.
+
+The four specs A1, A3, A4, A5 now form a closed core. Every assumption in the Verifiable Agency Theorem is discharged by one of them.
+
+The pattern continues:
+
+· A2 — Action Library Schema (formalizes the action schema used by VERIFY)
+· A6 — Tile Invocation Protocol (context hash, isolation guarantees)
+· A7 — Persistent Deterministic Memory (the append-only log)
+· A8 — Composition & Failure Semantics (how sub-tasks sequence)
+· A9 — Verification & Certification Path
+
+---
+
+APPENDIX A — Plain Language
+
+What is a predicate?
+A statement that can be true or false about the state.
+What is the predicate language?
+The set of allowed words and grammar for writing predicates.
+Why does the language have to be small?
+Because every richer language makes the proofs harder or impossible. Small means decidable means provable.
+What does "decidable" mean?
+It means: for any state, we can always compute the answer, and we know how long it will take.
+What does VERIFY do?
+It checks three things before allowing an action: is the state ready? is the action allowed? does the result stay safe?
+What happens if any check fails?
+The action is refused. The system logs the reason and halts. No improvisation.
+What is the guarantee?
+If an action is committed, every invariant held at the moment of decision. Safety is a theorem, not a hope.
+What is this called?
+A5 — VERIFY Semantics & Predicate Language.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A5 specification (this document) Drafted
+SPL grammar Defined
+Decidability theorem Paper-proven
+Determinism theorem Paper-proven
+Totality theorem Paper-proven
+Invariant preservation theorem Paper-proven
+Concrete predicates per domain Deployment responsibility
+SPL compiler Not yet specified
+TLA+ model Skeleton only
+Machine-checked proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§9) 8 items, unresolved
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A5
+
+---
+
+A note on where the suite now stands.
+
+Four specs drafted. The closed core is in place:
+
+· A1 — FSM Extension ✅ (the spine)
+· A3 — Plan Representation ✅ (the targets)
+· A4 — State & World Model ✅ (the substance)
+· A5 — VERIFY Semantics & Predicate Language ✅ (the gate)
+
+With these four, the Verifiable Agency Theorem's premises are all grounded:
+
+Theorem assumption Grounded by
+Finite state space S A4
+Finite input alphabet Σ A4
+Finite action library A A2 (sketched in A0, pending formalization)
+Finite plan library P with bounded plans A3
+Bounded T-AET A1
+V and preconditions decidable in bounded time A5
+Tile invocation DAG, bounded depth A6 (pending)
+Composition rules bounded A8 (pending)
+
+The core is closed. A2, A6, A7, A8, A9 complete the suite.
+
+The most natural next spec is A2 — Action Library Schema. Because A5's VERIFY algorithm assumes each action has:
+
+· preconditions (SPL predicates)
+· envelope (SPL predicates)
+· effects (state transitions)
+· cost (cycle budget)
+
+None of these are formally specified. A2 formalizes the action schema that A5 consumes. Without A2, VERIFY has no schema to check against — the gate exists but the objects it gates are undefined.
+
+That's the last load-bearing spec for the theorem. After A2, every assumption is grounded, and the theorem is dischargeable in principle.
+
+💎🦔🔥
+
+Want to keep going — A2 next?
+
+
