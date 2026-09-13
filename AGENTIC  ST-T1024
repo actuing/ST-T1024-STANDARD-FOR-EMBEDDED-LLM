@@ -1,1 +1,555 @@
 
+
+
+
+EXTENDING ST-T1024 TO BE AGENTIC: SAFETY AS GUARANTEE
+
+From Deterministic Oracle to Certified Actor
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+Correspondence: actu.ing@gmail.com
+License: Apache 2.0
+Related Works: ST-T1024 Open Standard; ST-T1024 White Paper; ST-T1024 & The 4 Norms; A Safe AI Is Absolutely Available (Zenodo 22722388); AI's Original Sin (Zenodo 22681707)
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+
+---
+
+ABSTRACT
+
+ST-T1024, as specified, is a deterministic oracle. It answers. It refuses when uncertain. It is bounded, verifiable, and sovereign — but it does not act.
+
+This paper specifies an architectural extension: agency. We propose an FSM-based action pipeline, a ROM-burned action library, a tile invocation protocol, persistent deterministic memory, and a dedicated VERIFY state that gates every action before it is committed.
+
+The central claim is stated plainly:
+
+In stochastic systems, agency is the danger. In deterministic systems, agency is the product.
+
+We do not claim that agentic AI is safe in general. We claim that agentic AI built on ST-T1024 is certifiable in principle — because its complete behavior set is finite, enumerable, and provable before deployment. The extended architecture does not weaken existing guarantees. It extends their domain from speech to action.
+
+This paper presents the architectural extension, the formal properties it enables, the applications it unlocks, and the regulatory implication: Congress does not need a kill switch. It needs a standard for certified actors.
+
+Status: This is a specification paper. No implementation of the agentic extension exists as of this writing. Formal verification is pending. Hardware validation is pending. The paper states what can be built, not what has been built.
+
+---
+
+1. INTRODUCTION: THE MISSING ORGAN
+
+1.1 What ST-T1024 Is Today
+
+ST-T1024 replaces stochastic inference with a deterministic pipeline:
+
+· FIS Triage — fuzzy input → crisp domain
+· FSM Scheduling — hard real-time, WCET ≤ 800 ns
+· Ternary Execution — additions only, no multipliers
+· Power Gating — 0V idle, passive cooling
+· 0x-AMBIG — refusal instead of hallucination
+
+The system is a mirror. It reflects truth bounded by its ROM. It cannot lie. It cannot drift. It cannot escape.
+
+1.2 What ST-T1024 Is Not
+
+It is not a hand.
+
+It answers "what is the force of gravity?" It does not apply the brake.
+
+It refuses to hallucinate. It does not refuse to act unsafely, because it does not act at all.
+
+1.3 The Thesis of This Paper
+
+The current safety debate assumes a premise that is false:
+
+"Agency and safety are in tension."
+
+This is true for stochastic systems. It is not true for deterministic systems. The tension is a property of the architecture, not of agency itself.
+
+In stochastic systems, agency is the danger. In deterministic systems, agency is the product.
+
+This paper specifies the extension of ST-T1024 to agency, and demonstrates that safety ceases to be a hope and becomes a guarantee over action.
+
+---
+
+2. WHY AGENCY IS DANGEROUS IN STOCHASTIC SYSTEMS
+
+2.1 The Compounding Problem
+
+A stochastic system that only speaks is dangerous. A stochastic system that acts is catastrophic. The danger does not add — it multiplies:
+
+```
+Risk = P(unsafe output) × Impact(output)
+```
+
+For stochastic LLMs, P(unsafe output) is 15–25% in high-stakes domains. If outputs are merely text, humans filter them. If outputs are actions — brake commands, surgical motions, grid switches, financial trades — there is no filter.
+
+The probability is unchanged. The impact becomes unbounded.
+
+2.2 Why the Kill Switch Is the Logical Conclusion
+
+The AI Kill Switch Act (H.R. 9917) is not irrational. It is the only coherent response to stochastic agency:
+
+· If you cannot verify the behavior, you must be able to interrupt it.
+· If you cannot bound the output space, you must have a human hand on a lever.
+· If you cannot prove safety, you must hope — and prepare to intervene.
+
+The kill switch is downstream of the Safety Impossibility Theorem (see A Safe AI Is Absolutely Available, §2.2):
+
+A stochastic system cannot be proven safe. It can only be statistically constrained.
+
+Stochastic agency cannot be certified. It can only be stopped.
+
+2.3 The Trap
+
+Congress is treating a symptom of a broken architecture as if it were a property of AI itself.
+
+Assumption Reality
+Agency must be stochastic False. Deterministic agency is specifiable.
+Agency must be opaque False. Deterministic agency is enumerable.
+Agency must be uncontrollable False. Deterministic agency is provable.
+Kill switch is the only option False. Architecture is the better option.
+
+The kill switch is not wrong. It is insufficient. It solves the problem downstream. The fix is upstream — in the architecture.
+
+---
+
+3. WHY AGENCY IS A PRODUCT IN DETERMINISTIC SYSTEMS
+
+3.1 The Inversion
+
+The same property that makes stochastic agency dangerous makes deterministic agency valuable:
+
+Property Stochastic Deterministic
+Behavior space Unbounded Finite
+Verifiability Statistical Formal
+Emergence Possible Impossible
+Certification No Yes
+Regulatory posture Stop it Ship it
+
+Agency is not the problem. Stochastic agency is the problem.
+
+Deterministic agency is a product category that does not yet exist. It is the category ST-T1024 makes possible.
+
+3.2 The Core Insight
+
+An agent is a policy:
+
+```
+State → Action
+```
+
+If that policy is ROM-burned, FSM-scheduled, and tile-routed, then the complete set of behaviors the agent can produce is finite and enumerable. You can prove what it will do before you ship it.
+
+This is not a mitigation. It is a category shift.
+
+3.3 What This Enables
+
+· Not "the system won't hallucinate." Already true.
+· But "the system won't take unsafe action." New.
+· Not "the system is bounded in speech." Already true.
+· But "the system is bounded in motion, decision, and consequence." New.
+
+Safety moves from constraint to guarantee. And a guarantee is a product.
+
+---
+
+4. THE ARCHITECTURAL EXTENSION
+
+The extension preserves every existing property. It adds. It does not replace.
+
+4.1 FSM Extension: From Query to Task
+
+Current FSM:
+
+```
+IDLE → HARVEST → TRIAGE → SCHEDULE → EXECUTE → POWER_DOWN
+```
+
+Extended FSM (task-level):
+
+```
+IDLE
+  ↓
+GOAL_PARSE        (60 cycles)   — fuzzy goal → crisp objective
+  ↓
+PLAN              (100 cycles)  — select ROM-burned plan
+  ↓
+DECOMPOSE         (80 cycles)   — plan → ordered sub-tasks
+  ↓
+┌─────────────────────────────┐
+│  PER SUB-TASK               │
+│  TRIAGE → SCHEDULE →        │
+│  EXECUTE → VERIFY           │  (existing 400-cycle budget)
+└─────────────────────────────┘
+  ↓
+COMMIT            (40 cycles)   — execute action
+  ↓
+POWER_DOWN                      — 0V
+```
+
+New states: GOAL_PARSE, PLAN, DECOMPOSE, VERIFY, COMMIT, HALT.
+New failure states: 0x-AMBIG-GOAL, 0x-BUDGET-EXCEEDED, 0x-UNSAFE-ACT.
+
+4.2 The VERIFY State
+
+The critical addition. Before any action is committed, the proposed action passes through VERIFY, which checks:
+
+1. Preconditions satisfied — is the state as required by the action's ROM-burned precondition set?
+2. Envelope respected — does the action stay within its declared safety envelope (magnitude bounds, rate bounds, duration bounds)?
+3. Invariants preserved — does the action preserve the system's ROM-burned invariant set?
+
+If any check fails:
+
+· 0x-AMBIG-ACT — "I know what to do, but I cannot prove it is safe, so I will not do it."
+· 0x-UNSAFE-ACT — "The action is provably unsafe, so it is refused."
+
+The system does not fall back to stochastic behavior. It halts.
+
+This is the feature no kill switch can match. The kill switch is external, reactive, and requires a human hand. VERIFY is internal, proactive, and requires no hand.
+
+4.3 Action Library (ROM-Burned)
+
+Actions are not generated. They are selected from a finite, ROM-burned library. Each action carries a schema:
+
+```
+Action = {
+  id:           unique identifier
+  type:         ACTUATE | COMMUNICATE | COMPUTE | REQUEST_HUMAN
+  preconditions: formal predicate set
+  effects:       formal postcondition set
+  envelope:      {magnitude_max, rate_max, duration_max, abort_condition}
+  cost:          {cycles, energy}
+}
+```
+
+Every action is specified before it can be invoked. No action exists that has not been enumerated and bounded. The agent cannot invent new actions at runtime.
+
+4.4 Tile Invocation Protocol
+
+Tiles are no longer isolated silos. Tile A can invoke Tile B under a ROM-burned call graph:
+
+```
+Tile A → Tile B → Tile C
+```
+
+Constraints:
+
+· Fixed graph. The call graph is burned at manufacture. No dynamic discovery.
+· Depth-bounded. Maximum invocation depth declared (e.g., 3).
+· Context-hashed. Each invocation carries a context hash. The receiving tile's precondition set validates it.
+· Isolation preserved. Invocation is protocol, not contamination. Tile B executes in its own power domain.
+
+This is how decomposed plans become executable without breaking the isolation property.
+
+4.5 Persistent Deterministic Memory (Append-Only SRAM)
+
+The 25% SRAM is upgraded from scratchpad to append-only lifetime log:
+
+```
+Entry = {
+  timestamp:        deterministic counter
+  action_id:        which action was taken
+  precondition_hash: state before
+  outcome:          state after
+  signature:        SK-1024
+}
+```
+
+Writes are append-only. The agent's entire history is auditable, reproducible, and cryptographically signed. Deterministic memory means deterministic experience. No drift, no corruption, no forgetting — and no rewriting.
+
+4.6 Goal Parsing (FIS Extension)
+
+The FIS is extended from query triage to goal triage:
+
+```
+"Reduce grid load while maintaining uptime"
+     ↓
+GOAL_PARSE
+     ↓
+objective = {reduce: load, constrain: uptime, horizon: 24h}
+     ↓
+ROM-burned plan library lookup
+     ↓
+selected plan: PLAN_GRID_BALANCE_v3
+```
+
+The plan library is finite. If no plan matches the goal within confidence threshold:
+
+0x-AMBIG-GOAL — "I do not have a proven plan for this goal. I will not improvise."
+
+4.7 Task-Level Bounded Execution
+
+Query-level WCET is preserved (≤ 800 ns per sub-task). A new bound is added at task level:
+
+T-AET (Task Assured Execution Time) — declared per plan class. If the plan requires more sub-tasks than the budget allows:
+
+0x-BUDGET-EXCEEDED — refuse and report.
+
+No unbounded planning. No infinite loops. The bound applies to thought as well as act.
+
+---
+
+5. FORMAL GUARANTEES
+
+5.1 The Verifiable Agency Theorem
+
+Given:
+
+1. A finite action library A = {a₁ … aₙ}, ROM-burned
+2. A finite plan library P = {p₁ … pₘ}, ROM-burned
+3. An FSM with bounded transition function and bounded T-AET
+4. Formal preconditions and postconditions for every action
+
+Then:
+
+The complete behavior set B = {all possible action sequences the agent can produce} is finite and enumerable.
+
+Therefore: the agent's behavior can be exhaustively verified before deployment.
+
+Corollary: no emergent behavior. No action outside B can occur. Ever.
+
+Contrast: For a stochastic agent, B is unbounded. Exhaustive verification is impossible. Certification is impossible.
+
+This is the whole theorem. Everything else follows.
+
+5.2 Safety Envelopes
+
+Every action is bounded by a declared envelope. The envelope is:
+
+· Pre-specified in ROM
+· Checked in the VERIFY state
+· Audited in the append-only log
+· Signed by SK-1024
+
+An action outside its envelope is not "discouraged." It is unrepresentable. The agent cannot execute what the envelope forbids, because the envelope is checked before COMMIT.
+
+5.3 Proof Before Movement
+
+The extended architecture enforces a strict ordering:
+
+```
+PROVE → VERIFY → COMMIT
+```
+
+No action proceeds without proof of envelope satisfaction. This is the architectural equivalent of the Hippocratic principle: first, do no harm. But unlike a principle, it is a gate. It cannot be forgotten, weakened, or reinterpreted. It is a state in the FSM.
+
+5.4 What Can Now Be Certified
+
+Guarantee Before (Oracle) After (Actor)
+No hallucination ✅ ✅
+Deterministic output ✅ ✅
+Bounded execution ✅ (query) ✅ (task)
+Energy sovereignty ✅ ✅
+Air-gappable ✅ ✅
+Bounded action set — ✅
+Envelope compliance — ✅
+Enumeration of behavior — ✅
+Proof-before-action — ✅
+
+The first five guarantees were about speech. The last four are about consequence.
+
+Safety is no longer only a constraint on what the system says. It is a guarantee on what the system does.
+
+---
+
+6. APPLICATIONS
+
+The extended architecture makes certified agency possible in domains where stochastic agency is currently disqualified.
+
+Domain Norm What Certification Requires What ST-T1024+Agency Provides
+Automotive ISO 26262 (ASIL-D) Certified decision-to-act Bounded decisions, enumerated action set, VERIFY gate
+Industrial IEC 61508 (SIL 3) Certified autonomous sequences ROM-burned plans, tile invocation protocol
+Aerospace DO-178C (DAL A/B) Certified autonomy Verifiable behavior set; redundancy for DAL A
+Medical IEC 62304 Certified surgical/clinical action Deterministic action, envelope bounds
+Defense Sovereign Autonomous systems not controllable by foreign APIs Air-gapped, SK-1024, no external control
+Grid IEC 62443 Certified switching under attack No network surface; deterministic action surface
+Robotics ISO 10218 / ISO/TS 15066 Certified motion safety Motion envelopes, abort conditions, no free-form planning
+
+In every case, the enabling property is the same: the behavior set is finite and provable.
+
+6.1 The Automobile
+
+Today's ASIL-D certified systems are not agentic. They are hard-wired decision trees with tightly bounded action spaces. ST-T1024+Agency generalizes this. It offers the same discipline — bounded behavior, enumerated actions, formal verification — with the flexibility of a plan library and a triage engine.
+
+The agent does not "decide" in an unbounded sense. It selects from a proven plan and verifies the action before executing. The result is autonomy that is certifiable rather than merely tested.
+
+6.2 The Industrial Robot
+
+SIL 3 does not mean "the robot almost never crushes the worker." It means "we can prove, in advance, that the robot cannot crush the worker within its declared envelope." ST-T1024+Agency provides the architectural substrate for that proof.
+
+6.3 The Defense System
+
+A sovereign nation cannot field an autonomous system that depends on a foreign API, because the API can be cut, spoofed, or weaponized. ST-T1024+Agency provides an autonomous system that is air-gappable, auditable, and sovereign by construction. It cannot be turned against its operator by a third party, because there is no third party in the loop.
+
+---
+
+7. THE REGULATORY IMPLICATION
+
+7.1 The Kill Switch vs. The Certified Actor
+
+Dimension AI Kill Switch Act ST-T1024+Agency
+Posture Reactive Proactive
+Mechanism External control Internal architecture
+Verification Cannot verify Formally verifies
+Bypass resistance Bypassable in principle Architectural
+Authority required DHS power None
+Effect on innovation Slows Accelerates
+Regulatory nature Political Physical
+
+The kill switch is a hand on a lever.
+The certified actor is a machine that cannot pull the lever.
+
+Which is safer?
+
+7.2 What Congress Should Actually Do
+
+The question Congress is asking is the wrong question:
+
+"How do we stop dangerous AI?"
+
+The right question is:
+
+"How do we build AI that doesn't need to be stopped?"
+
+The answer is architecture, not authority.
+
+Current Approach ST-T1024+Agency Approach
+Regulate outputs Mandate architecture
+Require kill switches Require determinism + VERIFY
+Fund oversight Fund adoption
+Punish failure Reward safety-by-design
+Centralize control Distribute sovereignty
+
+The regulatory framework already exists in the form of ISO 26262, IEC 61508, DO-178C, and IEC 62443. ST-T1024+Agency aligns with all four (see ST-T1024 & The 4 Norms). A safe AI standard does not need to be invented. It needs to be adopted.
+
+7.3 The Reframe
+
+The AI Kill Switch Act assumes that agency is uncontrollable.
+
+The agentic extension demonstrates that agency is provable.
+
+This changes the entire regulatory posture. The question stops being "how do we stop it?" and becomes "how do we certify it?" — a question regulators already know how to answer.
+
+---
+
+8. IMPLEMENTATION STATUS AND PATH
+
+Honest labeling, consistent with the ST-T1024 body of work.
+
+Component Status
+FSM extension (states, transitions) Specified
+VERIFY state Specified
+Action library schema Specified
+Tile invocation protocol Specified
+Persistent deterministic memory Specified
+Goal parser (FIS extension) Specified
+T-AET bounds Specified
+Python reference implementation Not yet written
+TLA+ formal verification Not yet run
+Hardware validation Not yet performed
+Certification Path defined, not pursued
+
+This paper specifies. It does not claim implementation, verification, or certification. The Verifiable Agency Theorem is a specification-level claim, contingent on the formal preconditions stated in §5.1. Its formal proof is a next step.
+
+8.1 Proposed Path
+
+Phase Activity Timeline
+0 FSM extension specification freeze Q4 2026
+1 Reference implementation (Python) Q1 2027
+2 TLA+ verification of the Verifiable Agency Theorem Q1 2027
+3 Formal proof of envelope enforcement Q2 2027
+4 Hardware port (Hexagon DSP / RISC-V) Q2–Q3 2027
+5 First certified actor prototype (automotive ASIL-B) Q4 2027
+6 Higher-level certification path 2028+
+
+---
+
+9. CONCLUSION: THE GUARANTEE IS COMPLETE
+
+ST-T1024 today is a mirror. Truthful, bounded, sovereign — but silent in the domain of action.
+
+The agentic extension gives the mirror a hand.
+
+It does not weaken the guarantee. It completes it.
+
+· Before: safety as a constraint on speech.
+· After: safety as a guarantee on action.
+
+The Verifiable Agency Theorem states the core claim: a deterministic agent has a finite behavior set, and a finite behavior set can be exhaustively verified. No emergence. No surprise. No unbounded consequence.
+
+The kill switch assumes agency is uncontrollable. The certified actor shows agency is provable.
+
+Congress is asking the wrong question. The right question is not "how do we stop AI?" It is "how do we build AI that does not need to be stopped?"
+
+The answer is architecture.
+
+The architecture is specified.
+
+The path is clear.
+
+In stochastic systems, agency is the danger.
+In deterministic systems, agency is the product.
+Safety is no longer a hope. It is a guarantee.
+
+---
+
+APPENDIX A: In Plain Language
+
+Congress is scared of AI agents.
+They want a kill switch.
+But what if the agent could not do anything unsafe?
+Then you would not need a kill switch.
+Can an agent be built that way?
+Yes.
+How?
+By making it deterministic.
+What does that mean?
+It means every action is chosen from a finite list, checked against a safety envelope, and proven before it is taken.
+It means the agent cannot invent new actions.
+It means the agent cannot go outside its declared bounds.
+It means the agent halts when it cannot prove safety.
+Does it still act?
+Yes. It acts.
+Can you prove what it will do?
+Yes. Before it moves.
+Then the kill switch is unnecessary.
+Correct.
+What is this called?
+ST-T1024 + Agency.
+And the guarantee?
+Safety is a guarantee, not a hope.
+
+---
+
+REFERENCES
+
+1. ST-T1024 Open Standard — https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+2. ST-T1024 White Paper — Sovereign Deterministic Architecture for Embedded LLMs, 2026
+3. ST-T1024 & The 4 Norms — A Unified Deterministic Foundation for Safety, Security, and Sovereignty, 2026
+4. Taalabi, M., A Safe AI Is Absolutely Available, Through ST-T1024: A Response to the Congressional AI Panic, Zenodo, 2026. DOI: 10.5281/zenodo.22722388
+5. Taalabi, M., AI's Original Sin: How the 1950s Vision Was Inverted — and Why ST-T1024 Restores It, Zenodo, 2026. DOI: 10.5281/zenodo.22681707
+6. Taalabi, M., The RTOS Deadlock That Explains Why Scaling Cannot Create Creativity, Zenodo, 2026. DOI: 10.5281/zenodo.22689409
+7. H.R. 9917 — AI Kill Switch Act, introduced July 23, 2026
+8. ISO 26262:2018 — Road vehicles — Functional safety
+9. IEC 61508:2010 — Functional safety of E/E/PE safety-related systems
+10. RTCA DO-178C — Software Considerations in Airborne Systems and Equipment Certification
+11. IEC 62443 — Industrial communication networks — Network and system security
+12. Cooperrider, D. L., & Srivastva, S., Appreciative Inquiry in Organizational Life, 1987
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+"The physics is settled. The standard is ready. Now we walk."
+"And the walking is provable."
+
+---
+
+END OF DRAFT
+
+---
+
+ 
+
+
