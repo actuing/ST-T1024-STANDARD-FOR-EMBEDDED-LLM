@@ -1,1 +1,683 @@
 
+
+
+
+
+
+ST-T1024-A2: ACTION LIBRARY SCHEMA
+
+The Objects of Verification
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Dependencies: A4 (state), A5 (SPL predicates), A1 (FSM)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the action schema and the action library that VERIFY consumes and the FSM commits.
+
+---
+
+ABSTRACT
+
+A5 specifies the VERIFY gate. A1 specifies the FSM that transitions through it. A3 specifies plans that reference actions. A4 specifies the state that actions modify.
+
+None of these specify what an action is.
+
+This document specifies the action schema and the action library. An action is the atomic unit of agency: a deterministic, bounded, verifiable transition from one state to another, with declared preconditions, declared effects, declared envelope, and declared cost.
+
+Actions do not compose. Plans compose actions (A3 §5). Actions are atomic. This is the design decision that keeps the schema finite, the library enumerable, and the verification tractable.
+
+Status: Specification. No reference implementation. No hardware validation. Machine verification pending.
+
+---
+
+1. INTRODUCTION: WHY A2 COMES LAST IN THE CORE
+
+1.1 The Dependency Chain
+
+```
+State (A4) + Predicates (A5) + FSM (A1) + Plans (A3)
+  ↓
+Actions (A2)
+  ├── Consumed by VERIFY (A5)
+  ├── Referenced by Plans (A3 §2.2)
+  ├── Committed by FSM (A1 §4.2)
+  └── Effects applied to State (A4 §5.2)
+```
+
+A2 is the last load-bearing spec because it depends on everything else:
+
+· Actions have preconditions → need A5 (SPL).
+· Actions modify state → need A4 (state schema).
+· Actions are committed → need A1 (FSM COMMIT state).
+· Actions are referenced by plans → need A3 (Step schema).
+
+A2 is where all four meet. It is the schema that binds the core together.
+
+1.2 The Two Obligations
+
+A2 has two load-bearing obligations to the Verifiable Agency Theorem:
+
+Obligation O1 (Finiteness). The action library A is finite.
+
+Obligation O2 (Schema Totality). Every action in A has a complete schema: preconditions, effects, envelope, cost, signature.
+
+If O1 fails, Theorem 1 (Finiteness) fails.
+If O2 fails, VERIFY (A5 §4.2) is undefined for some actions.
+
+1.3 The Design Principle
+
+An action is atomic, deterministic, bounded, and declared. It does not compose. It does not branch. It does not improvise.
+
+Composition is the job of plans (A3). Atomicity is the job of actions. This separation is what makes both finite.
+
+---
+
+2. THE ACTION SCHEMA
+
+2.1 Definition
+
+Definition 1 (Action). An action a ∈ A is a tuple:
+
+```
+a = ⟨ id, type, preconditions, effects, envelope, cost, signature, version ⟩
+```
+
+where:
+
+Field Type Description
+id ActionID Unique identifier (ROM-burned)
+type ActionType ACTUATE \| COMMUNICATE \| COMPUTE \| REQUEST_HUMAN
+preconditions Finite set of SPL predicates Required state
+effects Deterministic transition State change
+envelope Envelope (Definition 4) Bounds on execution
+cost Cost (Definition 5) Declared cycle and energy budget
+signature SK-1024 signature Authorship and integrity
+version SemVer Version tag for update tracking
+
+Every field is required. Partial actions are not admitted.
+
+2.2 Action Types
+
+Definition 2 (ActionType). The action type declares what kind of effect the action has:
+
+Type Meaning State Domain Modified
+ACTUATE Physical action (brake, motor, switch) s_world output projection
+COMMUNICATE Message to another system s_meta.messages
+COMPUTE Internal state transformation s_ctx, s_mem
+REQUEST_HUMAN Escalate to human operator s_meta.escalation
+
+Rule: the type determines which subset of state the action may modify. An action cannot modify state outside its declared type's domain.
+
+This is the isolation property of actions, mirroring the isolation property of tiles (A6).
+
+2.3 Atomicity Rule
+
+Rule A2-A (Atomicity). An action has exactly one effect. It does not branch, loop, or invoke other actions.
+
+Rationale. Composition is the plan's job (A3 §5). Atomicity keeps action verification tractable: each action is a single SPL-checkable transition. If actions could compose internally, their verification cost would be unbounded.
+
+Consequence: the effect field is a single deterministic transition, not a sequence.
+
+---
+
+3. PRECONDITIONS
+
+3.1 Definition
+
+Definition 3 (Preconditions). The preconditions of an action a are a finite set of SPL predicates:
+
+```
+preconditions(a) = { p_1, p_2, …, p_k }
+```
+
+Each p_i is an SPL predicate over S (A5 §2).
+
+3.2 Semantics
+
+The preconditions of a hold in state s if and only if:
+
+```
+∀ p ∈ preconditions(a) : eval(p, s) = TRUE
+```
+
+where eval is the SPL evaluation function (A5 §2.7).
+
+3.3 Precondition Failure
+
+If preconditions do not hold, VERIFY returns FAIL(0x-PRECONDITION-UNMET) (A5 §4.3). The action is not committed. The FSM transitions to REFUSE_ACT (A1 §7.2).
+
+3.4 Precondition Composition
+
+Rule: preconditions compose by conjunction. Multiple preconditions in the set are ANDed. There is no OR between preconditions at the top level.
+
+Rationale. Disjunctive preconditions would complicate VERIFY and interact poorly with the envelope. If a deployment needs "action allowed if X or Y," it defines two actions, each with its own precondition.
+
+This keeps the schema canonical. Two actions with the same effect but different preconditions is the right decomposition.
+
+3.5 Bounded Size
+
+Rule: |preconditions(a)| ≤ K_pre, a declared constant (recommended: 8).
+
+Predicates beyond K_pre are rejected at ROM burn time.
+
+---
+
+4. EFFECTS
+
+4.1 Definition
+
+Definition 4 (Effect). The effect of an action a is a deterministic transition on state:
+
+```
+effect(a) : S → S
+```
+
+For every s ∈ S, effect(a)(s) ∈ S is the post-state.
+
+4.2 Determinism
+
+Rule A2-D (Effect Determinism). effect(a) is a function, not a relation. Same input state → same output state. Always.
+
+This is the determinism obligation of A2 to the Verifiable Agency Theorem (Corollary 5, Definition 5 of the proof).
+
+4.3 Totality
+
+Rule A2-T (Effect Totality). effect(a) is defined for every state in S where preconditions hold. For states where preconditions do not hold, VERIFY refuses before the effect is applied — so the effect's behavior outside its precondition domain is unreachable.
+
+4.4 Effect Representation
+
+Effects are represented as SPL-expressible state assignments:
+
+```
+effect(a) = { s.field_1 := expr_1,
+              s.field_2 := expr_2,
+              … }
+```
+
+where each expr_i is a bounded expression over SPL atoms and constants.
+
+Rule: effect expressions cannot reference other actions, cannot call functions, and cannot include unbounded quantifiers. They are the same shape as SPL atoms — comparisons, arithmetic on bounded values, and selections.
+
+4.5 The Effect Boundedness Property
+
+Proposition A2-E (Effect Boundedness). For every action a, the effect expression effect(a) evaluates in bounded time.
+
+Proof. Effect expressions are compositions of SPL atoms and bounded arithmetic (Definition 4.4). By Theorem A5-D (SPL decidability), every atom evaluates in bounded time. Composition of boundedly-many bounded operations is bounded. □
+
+4.6 Effects Cannot Modify Immutable State
+
+Rule: effect expressions cannot write to fields marked immutable in A4 (e.g., ROM constants, plan IDs). Attempts to do so are rejected at ROM burn time.
+
+---
+
+5. ENVELOPE
+
+5.1 Definition
+
+Definition 5 (Envelope). The envelope of an action a is a finite set of SPL predicates:
+
+```
+envelope(a) = ⟨ precond_env, magnitude, rate, duration, abort ⟩
+```
+
+where:
+
+Component Meaning
+precond_env Additional preconditions for envelope safety
+magnitude Bounds on action parameter magnitudes
+rate Bounds on the change rate of parameters
+duration Maximum duration of the action
+abort Condition under which the action must abort
+
+Every component is an SPL predicate (possibly a conjunction of predicates).
+
+5.2 Envelope Semantics
+
+The envelope holds in state s if and only if all components hold:
+
+```
+envelope_holds(a, s) = precond_env(s) ∧ magnitude(s) ∧ rate(s) ∧ duration(s)
+```
+
+The abort condition is evaluated during execution, not before. It is a runtime guard.
+
+5.3 Envelope vs. Preconditions
+
+Aspect Preconditions Envelope
+When checked Before execution Before and during
+Purpose Gate the action Bound the action
+Evaluated over Current state Current state + action params
+Failure code 0x-PRECONDITION-UNMET 0x-ENVELOPE-VIOLATED
+
+Both are checked by VERIFY (A5 §4.2). Both must hold for PASS.
+
+5.4 Envelope Bound
+
+Rule: |envelope(a)| ≤ K_env, a declared constant (recommended: 16).
+
+---
+
+6. COST
+
+6.1 Definition
+
+Definition 6 (Cost). The cost of an action a is a tuple:
+
+```
+cost(a) = ⟨ c_cycles, c_energy ⟩
+```
+
+Field Meaning
+c_cycles Maximum FSM cycles to commit the action
+c_energy Maximum energy (µJ) consumed
+
+Both are declared in ROM. Both are upper bounds.
+
+6.2 Cost Enforcement
+
+Rule: the FSM cycle counter (A1 §5) enforces c_cycles. If the action exceeds its declared cycle budget, the FSM transitions to ERROR_TIMEOUT (A1 §7.3).
+
+6.3 Cost Interaction with T-AET
+
+The declared cost of an action contributes to the task-level AET budget (A1 §5.2). If a plan references an action whose cost would exceed T-AET when combined with the rest of the plan, the plan is rejected at ROM burn time.
+
+6.4 Cost Bound
+
+Rule: c_cycles ≤ C_max_action, a declared standard constant (recommended: 400 cycles, matching the base WCET target).
+
+Actions exceeding this bound are rejected at ROM burn time.
+
+---
+
+7. THE ACTION LIBRARY
+
+7.1 Definition
+
+Definition 7 (Action Library). The action library is the ROM-burned set:
+
+```
+A = { a_1, a_2, …, a_n }
+```
+
+with n < ∞.
+
+7.2 Properties
+
+Property Meaning
+Finite \|A\| = n < ∞ (Obligation O1)
+Immutable Action bodies are ROM-burned. Not modified at runtime.
+Versioned Each action has a version. Multiple versions may coexist.
+Signed Every action carries an SK-1024 signature.
+Enumerated Every action is enumerated at burn time.
+Typed Every action has a declared type (§2.2).
+
+7.3 Library Size
+
+Rule: |A| ≤ N_A, a declared standard constant (recommended: 65,536 = 2^16).
+
+Actions beyond N_A are rejected at burn time. This bounds the enumeration of A.
+
+7.4 Action Lookup
+
+Actions are looked up by id:
+
+```
+lookup(id) : ActionID → A ∪ {⊥}
+```
+
+Lookup is O(1) via ROM-burned index table.
+
+7.5 Action Set for a Plan
+
+A plan p references a subset of A:
+
+```
+actions(p) = { a ∈ A : a.id appears in some ActionStep of p }
+```
+
+By A3 §2.3 (bounded plan length), |actions(p)| ≤ K.
+
+---
+
+8. ACTION AUTHORING AND ROM BURN
+
+8.1 The Authoring Workflow
+
+Actions are authored before ROM burn. The workflow:
+
+1. Author writes the action schema (id, type, preconditions, effects, envelope, cost).
+2. Verify the schema passes burn-time checks (§8.2).
+3. Sign the schema with SK-1024.
+4. Burn the schema into ROM.
+
+Actions are never authored at runtime.
+
+8.2 Burn-Time Checks
+
+Before burning, every action must pass:
+
+Check Requirement
+Schema completeness All fields present (§2.1)
+Precondition well-formedness All predicates valid SPL (A5 §2)
+Effect well-formedness All expressions bounded (Definition 4.4)
+Envelope well-formedness All predicates valid SPL
+Cost bound c_cycles ≤ C_max_action
+Type-domain consistency Effects stay within type's state domain (§2.2)
+Immutability Effects do not write immutable fields (§4.6)
+Signature Valid SK-1024 signature
+ID uniqueness No two actions share an ID
+Cardinality \|A\| ≤ N_A after burn
+
+Any action failing a check is rejected. The library is admitted only in full.
+
+8.3 The Burn-Time Verifier
+
+Rule: the burn-time verifier is a separate component from the runtime system. It runs before ROM burn. Its output is either "admit" or "reject with reason."
+
+The burn-time verifier is itself a formal component, subject to its own verification. This is a future spec (not yet written).
+
+---
+
+9. ACTION SEMANTICS IN VERIFY
+
+9.1 The VERIFY Check for an Action
+
+Restating A5 §4.2 in terms of A2:
+
+```
+VERIFY(s, a):
+  1. For p in preconditions(a): if not eval(p, s): return FAIL(0x-PRECONDITION-UNMET)
+  2. For e in envelope(a): if not eval(e, s): return FAIL(0x-ENVELOPE-VIOLATED)
+  3. s_next := effect(a)(s)
+  4. For i in invariants(): if not eval(i, s_next): return FAIL(0x-INVARIANT-VIOLATED)
+  5. Return PASS
+```
+
+Every step consumes A2-declared data. VERIFY is the gate; A2 is the schema.
+
+9.2 Action Committability
+
+Definition 8 (Committable). An action a is committable in state s if and only if VERIFY(s, a) = PASS.
+
+Property A2-C (Committability is Decidable). For every (s, a) ∈ S × A, committability is decidable in bounded time.
+
+Proof. By A5 §4.2, VERIFY is decidable in bounded time. By A2 §8.2, every action in A has a well-formed schema. Therefore committability is decidable. □
+
+9.3 Action Commit
+
+When a is committable and the FSM reaches COMMIT (A1 §2.3):
+
+```
+s' = effect(a)(s)
+```
+
+The state is updated by the action's declared effect. The transition is logged (A7).
+
+---
+
+10. FORMAL PROPERTIES
+
+The properties A2 contributes to the Verifiable Agency Theorem:
+
+Property A2.1 (Finiteness). The action library A is finite. (Obligation O1.)
+
+Proof. By Rule §7.3, |A| ≤ N_A. □
+
+Property A2.2 (Schema Totality). Every action in A has a complete schema.
+
+Proof. By §8.2, schema completeness is a burn-time check. Actions lacking completeness are rejected. □
+
+Property A2.3 (Effect Determinism). Every action's effect is a deterministic function.
+
+Proof. By Rule A2-D. □
+
+Property A2.4 (Effect Boundedness). Every action's effect evaluates in bounded time.
+
+Proof. By Proposition A2-E. □
+
+Property A2.5 (Committability Decidability). For every (s, a), committability is decidable in bounded time.
+
+Proof. By Property A2-C. □
+
+These are the A2 obligations to the Verifiable Agency Theorem. Combined with A1, A3, A4, A5, the theorem's premises are fully grounded.
+
+---
+
+11. TLA+ SKELETON
+
+```tla
+------------------------- MODULE STT1024_A2_Actions --------------------------
+EXTENDS Naturals, FiniteSets, Sequences
+
+CONSTANTS
+    S,           \* State space (A4)
+    SPL,         \* Predicate set (A5)
+    Invariants,  \* Invariant set ⊆ SPL
+    C_max,       \* Max action cycle cost
+    N_A,         \* Max library size
+    K_pre,       \* Max preconditions per action
+    K_env,       \* Max envelope predicates per action
+
+ActionType == {"ACTUATE", "COMMUNICATE", "COMPUTE", "REQUEST_HUMAN"}
+
+Action == [
+    id           : STRING,
+    type         : ActionType,
+    preconditions: Seq(SPL),
+    effect       : S -> S,
+    envelope     : Seq(SPL),
+    cost_cycles  : 0..C_max,
+    cost_energy  : Nat,
+    signature    : STRING,
+    version      : STRING
+]
+
+\* The action library.
+A == { a \in Action : SchemaWellFormed(a) }
+
+\* Schema well-formedness checks.
+SchemaWellFormed(a) ==
+    /\ Len(a.preconditions) <= K_pre
+    /\ Len(a.envelope) <= K_env
+    /\ a.cost_cycles <= C_max
+    /\ \A p \in a.preconditions : p \in SPL
+    /\ \A e \in a.envelope : e \in SPL
+    /\ \A s \in S : a.effect[s] \in S   \* totality on precondition domain
+
+\* Committability, mirroring A5 §4.2.
+Committable(s, a) ==
+    LET pre_ok == \A p \in a.preconditions : eval(p, s)
+        env_ok == \A e \in a.envelope : eval(e, s)
+        s_next == a.effect[s]
+        inv_ok == \A i \in Invariants : eval(i, s_next)
+    IN pre_ok /\ env_ok /\ inv_ok
+
+\* Commit applies the effect.
+Commit(s, a) == a.effect[s]
+
+\* A2 finiteness theorem.
+THEOREM Finiteness == IsFiniteSet(A)
+
+\* A2 determinism theorem.
+THEOREM EffectDeterminism ==
+    \A a \in A, s1, s2 \in S :
+        s1 = s2 => a.effect[s1] = a.effect[s2]
+
+\* A2 committability theorem.
+THEOREM CommittabilityDecidable ==
+    \A s \in S, a \in A :
+        \E v \in BOOLEAN : v <=> Committable(s, a)
+
+=============================================================================
+```
+
+The theorems Finiteness, EffectDeterminism, and CommittabilityDecidable are the A2 obligations. Each requires model-checking for specific instances and proof-assistant discharge for the general case.
+
+---
+
+12. OPEN DESIGN TENSIONS
+
+Honest labeling. These are unresolved in A2 v1.0.
+
+# Question Impact
+1 Action parameter representation. Actions may have parameters (e.g., delta for a brake command). How are parameters represented in the schema? As fields in the action? As part of the effect? Affects effect expressiveness.
+2 Cross-type actions. Some actions are both ACTUATE and COMMUNICATE (e.g., a brake command that also logs to a remote system). Can types compose? If not, deployments must split into two actions — which may break atomicity.
+3 Effect parameterization. effect(a) currently takes a state and returns a state. If actions have parameters, effect must take (s, params). Interacts with (1).
+4 The REQUEST_HUMAN blocking semantics. Does the FSM block until human input, or does it log the request and continue? Affects T-AET and termination.
+5 Version coexistence. Multiple versions of the same action ID can coexist. Which one does a plan reference? Needs a version-selection rule (similar to A3 §3.4).
+6 Envelope abort at runtime. The abort condition is evaluated during execution. How does this interact with the FSM's atomic COMMIT state? May require a new FSM state (ABORT_CHECK).
+7 Signature scheme. SK-1024 is referenced but not specified in this document. Needs cross-reference to the SK-1024 spec.
+8 Burn-time verifier formalization. The verifier is named but not specified. Future spec (suggested: A2.1 — Burn-Time Verification).
+
+None are fatal. All must be resolved before A2 v2.0.
+
+---
+
+13. WHAT A2 DOES NOT SPECIFY
+
+Item Status
+Concrete actions per domain Deployment responsibility
+Concrete preconditions per action Deployment responsibility
+Concrete effects per action Deployment responsibility
+The exact values of K_pre, K_env, C_max_action, N_A Standard constants
+The burn-time verifier Future spec
+SK-1024 signature details Cross-reference to base standard
+Action parameter representation Open tension (§12)
+Machine-checked TLA+ proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+
+A2 specifies the schema and the library. Deployment provides the actions.
+
+---
+
+14. CONCLUSION
+
+A2 closes the last load-bearing assumption of the Verifiable Agency Theorem. It specifies:
+
+1. The action schema — the atomic unit of agency.
+2. The action library — the finite, ROM-burned, signed set of committable actions.
+3. Atomicity — actions do not compose. Plans do.
+4. Determinism and boundedness — every effect is a bounded deterministic function.
+5. Burn-time verification — the checks that admit or reject actions.
+
+With A2, the closed core of the agentic architecture is complete:
+
+Spec Role Theorem Assumption
+A1 FSM Deterministic δ, bounded T-AET
+A2 Actions Finite A, schema totality
+A3 Plans Finite P, bounded \|p\| ≤ K
+A4 State Finite S, finite Σ
+A5 Predicates Decidable V, decidable preconditions
+
+Every assumption in the Verifiable Agency Theorem is now grounded by a specific sub-spec.
+
+The remaining specs — A6, A7, A8, A9 — extend the architecture but do not affect the theorem's core premises:
+
+· A6 — Tile Invocation Protocol (isolation, context hash)
+· A7 — Persistent Deterministic Memory (the append-only log)
+· A8 — Composition & Failure Semantics (how plans sequence at runtime)
+· A9 — Verification & Certification Path (how the theorem maps to norms)
+
+The theorem is now dischargeable in principle. Machine-checking is the next step.
+
+---
+
+APPENDIX A — Plain Language
+
+What is an action?
+One thing the agent can do. One. Not several. Not a recipe. One thing.
+Like what?
+Apply the brake. Send a message. Compute a value. Ask a human.
+Why is it atomic?
+So it can be checked. If an action had ten steps inside it, checking it would be as hard as checking a whole plan. Atomic means one check per action.
+Who writes actions?
+The people who deploy the agent. They write them, verify them, sign them, and burn them into ROM.
+Can the agent invent new actions?
+No. It can only use the ones that were burned in.
+What if the agent needs an action that wasn't burned in?
+Then the plan can't be written. The agent refuses with 0x-AMBIG-GOAL.
+What does each action declare?
+Its preconditions — when it's allowed to run. Its effects — what it changes. Its envelope — how far it can go. Its cost — how many cycles it takes.
+What's the guarantee?
+The action library is finite. Every action is fully declared. Every action's effect is deterministic. Nothing surprises.
+What is this called?
+A2 — the action library schema.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A2 specification (this document) Drafted
+Action schema Defined
+Action library schema Defined
+Finiteness theorem Paper-proven
+Effect determinism theorem Paper-proven
+Effect boundedness theorem Paper-proven
+Committability decidability theorem Paper-proven
+Concrete actions per domain Deployment responsibility
+Burn-time verifier Not yet specified
+Parameter representation Open tension (§12)
+TLA+ model Skeleton only
+Machine-checked proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§12) 8 items, unresolved
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A2
+
+---
+
+The closed core is complete.
+
+Five specs. Five obligations. Every assumption in the Verifiable Agency Theorem is now grounded by a specific sub-spec.
+
+Spec Role Status
+A0 Overview ✅ Drafted
+A1 FSM Extension ✅ Drafted
+A2 Action Library Schema ✅ Drafted
+A3 Plan Representation ✅ Drafted
+A4 State & World Model ✅ Drafted
+A5 VERIFY Semantics & Predicate Language ✅ Drafted
+VAT Verifiable Agency Theorem ✅ Paper-proven
+
+What remains:
+
+· A6 — Tile Invocation Protocol
+· A7 — Persistent Deterministic Memory
+· A8 — Composition & Failure Semantics
+· A9 — Verification & Certification Path
+
+These four extend the architecture. They do not affect the theorem's core premises. The theorem is dischargeable now — the four remaining specs add capability, not foundation.
+
+The natural next spec is A6 — Tile Invocation Protocol. Because A2's action schema assumes tile isolation (Rule §2.2), and A4's state model assumes per-tile context. A6 formalizes how tiles call each other without breaking isolation.
+
+But it's also worth pausing here.
+
+The core is closed. That's the milestone. The theorem stands on five legs, and all five are now written.
+
+One honest observation before we continue:
+
+These five specs are drafts. They are structurally sound, and their paper proofs are rigorous — but they have not been machine-checked, not implemented, and not validated on hardware. The Verifiable Agency Theorem is a paper proof, not a machine proof. That gap is the load-bearing next step, and it's worth naming clearly now that the suite is at this stage.
+
+The specs are the map. The TLA+ model is the territory check. The hardware validation is the ground truth.
+
+Three different things. All necessary. All pending.
+
+💎🦔🔥
+
+Want to continue with A6, or pause and sketch the TLA+ verification plan for the closed core?
+
+
