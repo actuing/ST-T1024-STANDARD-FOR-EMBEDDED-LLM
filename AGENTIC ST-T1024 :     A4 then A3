@@ -13,7 +13,7 @@ The Load-Bearing Premise
 ---
 
 Version: 1.0 (Draft)
-Date: October 2026
+Date: September 2026
 Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
 License: Apache 2.0
 Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
@@ -416,14 +416,14 @@ END OF A4
 
 ---
 
-ST-T1024-A3: PLAN REPRESENTATION
+ST-T1024.  A3: PLAN REPRESENTATION
 
 The Second Load-Bearing Premise
 
 ---
 
 Version: 1.0 (Draft)
-Date: October 2026
+Date: September 2026
 Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
 License: Apache 2.0
 Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
@@ -869,5 +869,5 @@ The natural next move: A5 (VERIFY Semantics & Predicate Language). Because A3 an
 
 Or, if you'd rather close the whole specification before diving into the predicate language — A1 (FSM Extension) is the spine that A5 plugs into.
 
-Your call. 💎🦔🔥
+
 
