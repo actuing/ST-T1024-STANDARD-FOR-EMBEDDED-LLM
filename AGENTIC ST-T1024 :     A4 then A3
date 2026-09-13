@@ -1,1 +1,873 @@
 
+
+
+
+
+
+
+
+ST-T1024-A4: STATE & WORLD MODEL
+
+The Load-Bearing Premise
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the state representation and world interface that the agentic extension requires.
+
+---
+
+ABSTRACT
+
+The Verifiable Agency Theorem assumes a finite state space S and a finite input alphabet Σ. Neither is specified in A0. This document specifies them.
+
+Without A4, VERIFY has nothing to verify. Preconditions are predicates over state; if state is undefined, preconditions are undefined. The append-only log has nothing to record. The plan library has no world to plan against. A4 is the premise the entire agentic architecture rests on.
+
+This document defines:
+
+1. The state schema — what a state is, how it is structured, why it is finite.
+2. The world model — how external reality maps into internal state.
+3. The sensor interface — how inputs are quantized and delivered.
+4. The transition function — how state changes deterministically.
+5. The state access protocol — how tiles read and write state.
+6. The invariant set — what must always hold.
+
+Every definition is anchored to a requirement of the Verifiable Agency Theorem. Every constraint is a design decision, not an empirical observation.
+
+Status: This is a specification. No reference implementation exists. No hardware validation exists.
+
+---
+
+1. INTRODUCTION: WHY STATE COMES FIRST
+
+1.1 The Dependency Chain
+
+Every component of the agentic extension depends on state:
+
+```
+State (A4)
+  ├── VERIFY (A5)          — preconditions are predicates over state
+  ├── Plans (A3)           — plans read and write state
+  ├── Actions (A2)         — action effects are state changes
+  ├── Invocation (A6)      — context hash is a state projection
+  ├── Memory (A7)          — log entries record state deltas
+  └── Composition (A8)     — sub-task sequencing depends on state
+```
+
+Remove A4 and every other sub-spec becomes undefined. State is the premise.
+
+1.2 The Two Constraints
+
+The Verifiable Agency Theorem requires:
+
+· Finiteness — |S| < ∞ (Theorem 1 depends on this).
+· Determinism — δ : S × Σ → S is a function, not a relation (Corollary 5 depends on this).
+
+A4 must deliver both. Not by hoping reality is finite, but by constructing a finite representation of reality. This is the architectural move that makes verification possible.
+
+1.3 The Design Principle
+
+The state is not the world. The state is a finite, quantized, deterministic projection of the world — sufficient for the agent's declared task domain, and no larger.
+
+This is what safety-critical systems already do. A flight controller does not model the universe. It models airspeed, altitude, attitude, and a bounded set of environmental inputs — quantized to the precision required for certified control. A4 generalizes this discipline.
+
+---
+
+2. STATE SCHEMA
+
+2.1 Definition
+
+Definition 1 (State). A state s ∈ S is a tuple:
+
+```
+s = ⟨ s_mode, s_ctx, s_world, s_mem, s_meta ⟩
+```
+
+where:
+
+Component Description Bound
+s_mode FSM state (IDLE, PLAN, EXECUTE, VERIFY, …) \|M\| states, M finite
+s_ctx Active tile context (which tile, which task) \|T\| × \|TaskID\|
+s_world Quantized world model (sensor state) product of sensor domains
+s_mem Bounded SRAM window (recent history) W entries
+s_meta Metadata (cycle counter, task ID, flags) bounded integers
+
+Every component is drawn from a finite domain. Their product is S.
+
+2.2 Finiteness Argument
+
+Proposition. |S| < ∞.
+
+Proof. Each component has a finite domain:
+
+· s_mode — finite by A1 (FSM has finitely many states).
+· s_ctx — finite by A6 (finite tile set, finite task ID space).
+· s_world — finite by §3 (sensors are quantized).
+· s_mem — finite by A7 (bounded window W).
+· s_meta — finite by bounded integer ranges.
+
+The Cartesian product of finite sets is finite. □
+
+Note: |S| is finite but may be very large. The theorem claims finiteness; model-checking uses symbolic methods.
+
+2.3 The State is Total
+
+Every field is always defined. There is no "null" state, no "unknown" state, no partial state. If a sensor fails, the failure is a value in the domain (SENSOR_FAULT), not an absence. This is the "no-hallucination" principle applied to state: the agent cannot be uncertain about its own state, because uncertainty is not representable.
+
+---
+
+3. WORLD MODEL
+
+3.1 Definition
+
+Definition 2 (World Model). The world model s_world is a tuple of quantized sensor readings:
+
+```
+s_world = ⟨ r_1, r_2, …, r_n ⟩
+```
+
+where each r_i ∈ D_i is a value drawn from a finite domain D_i.
+
+3.2 Sensor Quantization
+
+Each sensor i has a declared schema:
+
+Field Meaning Example (automotive brake sensor)
+id Sensor identifier BRAKE_PRESSURE
+domain Finite value set {0, 1, …, 255} (pressure in kPa/10)
+rate Max update rate 100 Hz
+latency Max delivery latency 1 ms
+fault_value Value on failure 0xFF
+
+Rule: No sensor enters the agent's world model without a declared schema. Sensors without schemas are not admitted. This is the boundary between the world and the agent.
+
+3.3 The Finiteness Guarantee
+
+Proposition. |s_world| < ∞.
+
+Proof. Each D_i is finite by declaration. The product of finitely many finite sets is finite. □
+
+Design constraint: the number of sensors n is finite and declared. No dynamic sensor discovery. This is what makes s_world finite at design time.
+
+3.4 Fault Handling
+
+Sensor faults are first-class values in the domain, not exceptions. When a sensor fails:
+
+· Its value transitions to fault_value.
+· The state remains total.
+· Downstream logic treats the fault as a value, not an error.
+
+This preserves determinism: the same fault always produces the same state.
+
+---
+
+4. SENSOR INTERFACE
+
+4.1 The Input Alphabet Σ
+
+Definition 3 (Input Alphabet). Σ is the set of all distinguishable transitions the agent can observe:
+
+```
+Σ = { σ : σ is a valid sensor transition }
+```
+
+Since each sensor has finite domain D_i, and the transition is a change from one value to another, the total alphabet size is bounded by:
+
+```
+|Σ| ≤ ∏_i |D_i|²
+```
+
+This is finite but astronomical. In practice, the alphabet is restricted by:
+
+· Rate limits — only transitions within the sampling window count.
+· Relevance filters — only transitions relevant to active tiles are admitted.
+· Hysteresis — small changes below a declared threshold are ignored.
+
+These filters are declared per deployment, not per standard.
+
+4.2 The Sampling Discipline
+
+Rule: sensors are sampled at declared rates. Sampling is synchronous with the FSM cycle. No asynchronous interrupts admit state changes.
+
+This is a departure from typical real-time design, and it is deliberate. Asynchronous inputs violate the determinism requirement of the FSM. By sampling synchronously, the state transition is always s' = δ(s, σ) where σ is the sampled input for that cycle. No race conditions. No nondeterministic interleaving.
+
+4.3 The Transition Function
+
+Definition 4 (Transition). δ : S × Σ → S. Given a state and a sampled input, the next state is uniquely determined.
+
+```
+s_{t+1} = δ(s_t, σ_t)
+```
+
+Properties:
+
+· Deterministic — δ is a function, not a relation.
+· Total — δ is defined for every (s, σ) ∈ S × Σ.
+· Bounded — every transition completes within the FSM cycle budget.
+
+These three properties are what the Verifiable Agency Theorem requires (Definition 5 in the proof).
+
+---
+
+5. STATE ACCESS PROTOCOL
+
+5.1 Read Access
+
+Tiles read state through a read-only projection. Each tile declares which fields it needs:
+
+```
+Tile_Read_Scope(tile_id) ⊆ {fields of S}
+```
+
+A tile cannot read fields outside its scope. This is the isolation property (A6) applied to state.
+
+5.2 Write Access
+
+Writes go through declared transitions. A tile cannot arbitrarily mutate state. Instead, it proposes a transition:
+
+```
+propose_transition : S × Tile → (S → S)
+```
+
+The VERIFY state (A5) checks the proposal against declared preconditions and envelope bounds. Only after PASS does the transition commit.
+
+Rule: no tile writes state directly. All writes are transitions mediated by VERIFY.
+
+5.3 The State Log
+
+Every committed transition is recorded in the append-only log (A7):
+
+```
+Entry = ⟨ timestamp, prev_state_hash, transition_id, next_state_hash, signature ⟩
+```
+
+The log is the agent's complete history. It is auditable, reproducible, and signed.
+
+5.4 Context Hashing (for A6)
+
+For tile invocation, the invoker provides a context hash:
+
+```
+ctx_hash = H(s_world_projection, s_ctx, task_id)
+```
+
+where H is a deterministic hash function (e.g., SHA-256 or a ternary-compatible hash). The invoked tile recomputes the hash and verifies it matches. This is the invocation integrity check from A6.
+
+---
+
+6. INVARIANTS
+
+6.1 Definition
+
+Definition 5 (Invariant Set). I ⊆ S is the set of states the agent may occupy. Every state transition must preserve I:
+
+```
+∀ s ∈ I, σ ∈ Σ : δ(s, σ) ∈ I
+```
+
+6.2 The Invariant Catalog
+
+Each deployment declares its invariant set. Examples:
+
+Invariant Domain Meaning
+I_safe Automotive Brake pressure never exceeds safe bounds
+I_bounded All Cycle counter never exceeds T_max
+I_no_overflow All All integer fields stay in declared ranges
+I_envelope All No action is committed outside its envelope
+
+Rule: invariants are declared in ROM and checked by VERIFY. A transition that violates an invariant is refused with 0x-UNSAFE-ACT.
+
+6.3 Invariant Verification
+
+The invariant set I is finite (subset of finite S). Therefore I can be exhaustively verified by finite model-checking. This is Corollary 2 of the Verifiable Agency Theorem, applied to state.
+
+---
+
+7. STATE AND THE THREE FIXES
+
+Fix How A4 Contributes
+Fix 1 (Architecture) A4 fixes the shape of state. Two engineers following A4 produce structurally identical state models.
+Fix 2 (Behavior) A4 leaves the content of D_i, invariants, and sensor schemas to deployment. Different domains, same grammar.
+Fix 3 (Safety) A4 makes state finite and deterministic. Without this, the Verifiable Agency Theorem cannot be established. A4 is a necessary condition for Fix 3.
+
+---
+
+8. WHAT A4 DOES NOT SPECIFY
+
+Honest labeling.
+
+Item Status
+Concrete sensor schemas for each domain Deployment responsibility
+Concrete invariant sets Deployment responsibility
+The hash function H Implementation choice (SHA-256 or ternary-compatible equivalent)
+The exact size of the SRAM window W Deployment-tunable, bounded
+The rate limits and relevance filters Deployment-tunable
+Machine-verified TLA+ state model Pending
+Reference implementation Not yet
+
+A4 specifies the form. Deployment specifies the content. This is the standard/deployment split, made explicit.
+
+---
+
+9. TLA+ SKELETON
+
+```tla
+--------------------------- MODULE STT1024_A4_State ---------------------------
+EXTENDS Naturals, FiniteSets, Sequences
+
+CONSTANTS
+    M,          \* FSM state set (finite)
+    T,          \* Tile identifier set (finite)
+    TaskID,     \* Task identifier space (finite)
+    Sensors,    \* Sensor schema set (finite)
+    Domain,     \* Sensor → finite domain
+    W,          \* SRAM window size (bounded)
+    MaxCycle,   \* Maximum cycle count
+    Inv         \* Invariant set ⊆ S
+
+State == [
+    mode  : M,
+    ctx   : T × TaskID,
+    world : [s \in Sensors |-> Domain[s]],
+    mem   : Seq(W),
+    meta  : [cycle : 0..MaxCycle, task : TaskID]
+]
+
+Sigma == \* Valid input alphabet (bounded by sensor transitions)
+    { sigma \in [Sensors -> UNION_{s \in Sensors} Domain[s]] :
+        \A s \in Sensors : sigma[s] \in Domain[s] }
+
+delta == \* Deterministic transition (deployment-supplied)
+    CHOOSE f \in [State × Sigma -> State] : TRUE
+
+Invariant_Holds(s) == s \in Inv
+
+Preservation ==
+    \A s \in Inv, sigma \in Sigma :
+        Invariant_Holds(delta[s, sigma])
+
+=============================================================================
+```
+
+The theorem Preservation is what needs to be model-checked: every transition from an invariant state leads to an invariant state.
+
+---
+
+10. CONCLUSION
+
+A4 defines the state representation and world interface that the agentic extension requires. Without it, the Verifiable Agency Theorem has no premises, VERIFY has no object, and the append-only log has no content.
+
+The three commitments:
+
+1. State is finite. By construction, not by hope.
+2. State is deterministic. Transitions are functions, not relations.
+3. State is total. Faults are values, not absences.
+
+These commitments are what make the rest of the agentic extension possible. A3 (plan representation) sits on top of A4. A5 (VERIFY) checks predicates over A4 state. A7 (memory) logs A4 transitions.
+
+A4 is the foundation. Everything else is downstream.
+
+---
+
+APPENDIX A — Plain Language
+
+What is the state of an AI agent?
+Everything it knows about itself and the world, right now, in one place.
+Why does it have to be finite?
+So you can prove what it will do next.
+How do you make it finite?
+You quantize the world. Sensors have a fixed set of values. Numbers have bounds. Nothing is infinite.
+But the world is infinite.
+The world is. The agent's model of the world is not. The model is a finite projection — enough for the task, and no more.
+Is that safe?
+Yes — because the model is what the agent acts on. If the model is finite and the transitions are deterministic, the agent's behavior is provable.
+And the guarantee?
+The agent cannot be uncertain about its own state. Uncertainty is not representable.
+What is this called?
+A4 — the state and world model.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A4 specification (this document) Drafted
+Concrete sensor schemas Deployment responsibility
+Concrete invariant sets Deployment responsibility
+TLA+ state model Skeleton only
+TLA+ preservation proof Not yet
+Reference implementation Not yet
+Hardware validation Not yet
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A4
+
+---
+
+---
+
+ST-T1024-A3: PLAN REPRESENTATION
+
+The Second Load-Bearing Premise
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Dependencies: A4 (state & world model), A2 (action library)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the plan schema that DECOMPOSE produces and EXECUTE consumes.
+
+---
+
+ABSTRACT
+
+A0 specifies that an agentic ST-T1024 decomposes goals into sub-tasks via a ROM-burned plan library. A0 does not specify what a plan is. This document specifies it.
+
+Without A3, DECOMPOSE has no target. The plan library has no schema. The bounded-plan assumption of the Verifiable Agency Theorem (|p| ≤ K) has no grounding. A3 is the second load-bearing premise of the agentic architecture, complementing A4.
+
+This document defines:
+
+1. The plan schema — what a plan is, structurally.
+2. The plan library — how plans are stored, indexed, and versioned.
+3. The composition rules — how plans compose without unbounded recursion.
+4. The bounded length property — why every plan has a finite maximum length.
+5. The DECOMPOSE semantics — how a plan becomes a sub-task sequence.
+6. The failure and rollback semantics — what happens when a sub-task fails.
+
+Every definition is anchored to a requirement of the Verifiable Agency Theorem. Every constraint is a design decision.
+
+Status: Specification. No reference implementation. No hardware validation.
+
+---
+
+1. INTRODUCTION: WHY PLANS COME SECOND
+
+1.1 The Dependency Chain
+
+```
+State (A4) + Action Library (A2)
+  ↓
+Plans (A3)
+  ├── DECOMPOSE (A1)       — plans become sub-task sequences
+  ├── Composition (A8)     — plans compose via declared rules
+  ├── Bounded length       — supports the Verifiable Agency Theorem
+  └── Log entries (A7)     — plan execution is logged
+```
+
+A4 gives the agent a state. A2 gives the agent actions. A3 gives the agent sequences of actions — plans — that achieve goals. Without A3, the agent is a collection of isolated actions with no way to combine them into meaningful tasks.
+
+1.2 The Two Constraints
+
+The Verifiable Agency Theorem requires:
+
+· Finiteness — |P| < ∞ (bounded plan library).
+· Bounded length — ∀p ∈ P: |p| ≤ K (bounded plan length).
+
+A3 must deliver both. Not by hoping plans are short, but by constructing a representation that cannot exceed K.
+
+1.3 The Design Principle
+
+A plan is a finite, deterministic, acyclic sequence of sub-tasks — where each sub-task is either an action from A2, a nested plan from P, or a bounded conditional on state from A4.
+
+Plans do not invent. They compose what already exists. The plan library is the agent's procedural ROM.
+
+---
+
+2. PLAN SCHEMA
+
+2.1 Definition
+
+Definition 1 (Plan). A plan p ∈ P is a tuple:
+
+```
+p = ⟨ id, precondition, steps, postcondition, budget, version ⟩
+```
+
+where:
+
+Field Type Description
+id PlanID Unique identifier (ROM-burned)
+precondition Predicate over S (A4) Required starting state
+steps Sequence of Step Bounded sequence of sub-tasks
+postcondition Predicate over S (A4) Expected ending state
+budget {cycles, depth, energy} Declared resource bounds
+version SemVer Plan version (for SRAM updates)
+
+2.2 Step Schema
+
+Definition 2 (Step). A step is one of three forms:
+
+```
+Step ::=
+  | ActionStep ⟨action_id ∈ A, params⟩
+  | PlanStep ⟨plan_id ∈ P, params⟩
+  | ConditionalStep ⟨predicate over S, then_branch, else_branch⟩
+```
+
+Constraint: ConditionalStep branches must both be finite step sequences. Nesting depth is bounded by D_cond.
+
+Constraint: PlanStep invokes a plan by ID. It does not inline the sub-plan. This keeps plans small and prevents unbounded expansion.
+
+2.3 Bounded Length
+
+Definition 3 (Plan Length). The length |p| is the total number of ActionStep and ConditionalStep nodes in the plan, after expanding PlanStep references to their declared depth.
+
+Bounded Length Property (B3). Every plan has |p| ≤ K for a declared K.
+
+Proof. K is a declared standard constant (see §4). The plan schema enforces K at:
+
+· ROM burn time (plans longer than K are rejected).
+· DECOMPOSE time (expansion that would exceed K triggers 0x-BUDGET-EXCEEDED).
+
+The bound is enforced structurally, not empirically. □
+
+---
+
+3. PLAN LIBRARY
+
+3.1 Definition
+
+Definition 4 (Plan Library). P is the ROM-burned set of plans:
+
+```
+P = { p_1, p_2, …, p_m }
+```
+
+with m finite.
+
+3.2 Properties
+
+Property Meaning
+Finite \|P\| = m < ∞ (Theorem assumption A3)
+Indexed Plans are indexed by (goal_class, precondition_hash) for deterministic lookup
+Immutable Plan bodies are ROM-burned. Only version pointers can be updated (SRAM).
+Versioned Each plan has a version. Multiple versions may coexist; the pointer selects which is active.
+Signed Every plan carries an SK-1024 signature over its content.
+
+3.3 Plan Lookup
+
+Given a goal g (from GOAL_PARSE) and current state s:
+
+```
+candidates = { p ∈ P : preconditions(p) ⊆ s  ∧  goal_class(p) = g }
+```
+
+If candidates is empty: 0x-AMBIG-GOAL.
+If |candidates| > 1: deterministic tie-break (see §3.4).
+If |candidates| = 1: select.
+
+3.4 Deterministic Tie-Break
+
+When multiple plans match, selection is by:
+
+1. Highest version — most recently signed.
+2. Lowest plan ID — lexicographic.
+3. Lowest total budget — most resource-efficient.
+
+This ordering is total and deterministic. Same input → same plan selection. Always.
+
+---
+
+4. STANDARD CONSTANTS
+
+The following are declared by A3 and used by the Verifiable Agency Theorem:
+
+Constant Meaning Typical value
+K Max plan length (steps) 64
+D_cond Max conditional nesting depth 4
+D_invoke Max PlanStep invocation depth 3
+m Max plan library size 4096
+budget_max Max task-level cycle budget 10⁶
+
+These are standard constants — deployments may tighten them, not loosen them. Loosening violates the Verifiable Agency Theorem's assumptions.
+
+---
+
+5. COMPOSITION RULES
+
+5.1 The Three Composition Operators
+
+Plans compose via three declared operators, all bounded:
+
+Sequential composition (;). p1 ; p2 — execute p1, then p2. Both plans must be in P. Length adds: |p1 ; p2| = |p1| + |p2|. Bound: sum ≤ K.
+
+Conditional composition (if). if predicate then p1 else p2. Both branches must be in P. Length: max(|p1|, |p2|) + 1. Bound: max + 1 ≤ K.
+
+Bounded iteration (while_bounded). while_bounded predicate max_n p. Iteration count is bounded by declared max_n. Length: max_n × |p| + 1. Bound: product ≤ K.
+
+Rule: composition is compile-time. Plans are composed when burned into ROM, not at runtime. Runtime composition is forbidden, because it would violate bounded length.
+
+5.2 No Unbounded Recursion
+
+Rule: the PlanStep invocation graph must be a DAG. Recursive plans are rejected at ROM burn time.
+
+Proof of feasibility. DAG property is checkable at compile time by topological sort. Plans failing the check are not admitted to P. □
+
+5.3 Total Bounded Length
+
+Proposition. Every composed plan has |p| ≤ K.
+
+Proof. By induction over the composition operators. Base: atomic actions have length 1 ≤ K. Sequential: sum of bounded terms, bounded by K by declared constraint. Conditional: max of bounded terms plus 1, bounded by K. Iteration: product of bounded term and max_n, bounded by K. DAG property prevents infinite expansion. □
+
+---
+
+6. DECOMPOSE SEMANTICS
+
+6.1 Definition
+
+Definition 5 (DECOMPOSE). Given a selected plan p, DECOMPOSE produces a sub-task sequence:
+
+```
+DECOMPOSE(p, s) : (Plan, State) → Sequence(SubTask)
+```
+
+The sequence is finite, ordered, and deterministic.
+
+6.2 The Decomposition Rules
+
+Plan Node Decomposition
+ActionStep(a, params) One sub-task: invoke action a with params
+PlanStep(p', params) Recursive DECOMPOSE, up to D_invoke depth
+ConditionalStep(pred, t, e) Evaluate pred on s; decompose selected branch
+
+The sequence is built depth-first, in declared order.
+
+6.3 Sub-Task Ordering
+
+Sub-tasks execute in sequence. Each sub-task:
+
+1. Reads its declared state projection (A4 §5.1).
+2. Executes (via A1 FSM).
+3. Verifies (via A5).
+4. Commits or refuses.
+5. Logs (via A7).
+
+If a sub-task refuses: see §7.
+
+6.4 Bounded Decomposition
+
+Proposition. |DECOMPOSE(p, s)| ≤ K × D_invoke.
+
+Proof. Each ActionStep produces one sub-task. Each PlanStep recursively expands, bounded by D_invoke. Total sub-tasks bounded by plan length × invocation depth. □
+
+---
+
+7. FAILURE AND ROLLBACK SEMANTICS
+
+7.1 Failure Modes
+
+Failure Cause Response
+Sub-task refused VERIFY = FAIL Apply plan's declared failure policy
+Sub-task timeout T-AET exceeded 0x-BUDGET-EXCEEDED
+Invariant violated State left I 0x-UNSAFE-ACT, halt
+Plan preconditions unmet State drifted 0x-AMBIG-GOAL, refuse plan
+
+7.2 Failure Policy
+
+Each plan declares a failure policy in its schema:
+
+```
+FailurePolicy ::=
+  | Halt              \* Stop, log, refuse
+  | Retry(n)          \* Retry sub-task up to n times
+  | RollbackTo(step)  \* Return to step k, retry from there
+  | Skip              \* Continue to next sub-task (dangerous, discouraged)
+```
+
+Rule: default policy is Halt. Deployments may override, but every override is declared and auditable.
+
+Rule: retry count is bounded. The total cycles consumed by a plan — including retries — must not exceed budget_max.
+
+7.3 Rollback
+
+Rollback restores state to a prior checkpoint. Checkpoints are recorded in the append-only log (A7). Rollback itself is an action with its own envelope; it must pass VERIFY like any other action.
+
+Rule: rollback cannot violate invariants. If the state before the failure was in I, and rollback returns to that state, I is preserved.
+
+---
+
+8. PLAN AND THE THREE FIXES
+
+Fix How A3 Contributes
+Fix 1 (Architecture) A3 fixes the shape of plans. Every conforming implementation has the same plan schema, same composition rules, same DECOMPOSE semantics.
+Fix 2 (Behavior) A3 leaves the content of P to deployment. Automotive plans ≠ grid plans. Same grammar, different libraries.
+Fix 3 (Safety) A3 delivers the bounded-length property. Without it, DECOMPOSE could produce unbounded sub-task sequences, violating the Verifiable Agency Theorem.
+
+---
+
+9. WHAT A3 DOES NOT SPECIFY
+
+Item Status
+Concrete plan content per domain Deployment responsibility
+Concrete failure policies per plan Deployment responsibility
+The exact value of K Standard constant (recommended 64), deployment may tighten
+The plan authoring workflow Not yet specified (future spec)
+Plan verification at ROM burn time Not yet specified (future spec)
+Machine-verified TLA+ plan model Pending
+Reference implementation Not yet
+
+A3 specifies the form. Deployment specifies the content.
+
+---
+
+10. TLA+ SKELETON
+
+```tla
+--------------------------- MODULE STT1024_A3_Plans --------------------------
+EXTENDS Naturals, FiniteSets, Sequences
+
+CONSTANTS
+    A,          \* Action library (A2, finite)
+    P,          \* Plan library (finite)
+    K,          \* Max plan length
+    D_invoke,   \* Max invocation depth
+    S           \* State space (A4)
+
+Step ==
+    [ type   : {"action", "plan", "conditional"},
+      target : A ∪ P,
+      pred   : S -> BOOLEAN,
+      branches : Seq(Seq(Step)) ]
+
+Plan ==
+    [ id           : STRING,
+      precondition : S -> BOOLEAN,
+      steps        : Seq(Step),
+      postcondition: S -> BOOLEAN,
+      budget       : [cycles : Nat, depth : Nat] ]
+
+\* Bounded length property
+BoundedPlan(p) ==
+    /\ p \in Plan
+    /\ Len(p.steps) <= K
+    /\ \A i \in DOMAIN p.steps : StepBounded(p.steps[i], 0)
+
+StepBounded(step, depth) ==
+    /\ depth <= D_invoke
+    /\ CASE step.type = "action"      -> TRUE
+            [] step.type = "plan"      -> depth < D_invoke
+            [] step.type = "conditional" -> 
+                 \A b \in DOMAIN step.branches :
+                     \A i \in DOMAIN step.branches[b] :
+                         StepBounded(step.branches[b][i], depth + 1)
+
+\* The theorem A3 contributes to
+Theorem_A3 == \A p \in P : BoundedPlan(p)
+
+=============================================================================
+```
+
+The theorem Theorem_A3 is what must be established: every plan in P satisfies the bounded-length property. This can be checked at ROM burn time (compile-time verification) and does not require runtime model-checking.
+
+---
+
+11. CONCLUSION
+
+A3 defines the plan representation that DECOMPOSE produces and EXECUTE consumes. Combined with A4, the two load-bearing premises of the Verifiable Agency Theorem are now in place:
+
+· A4 — finite state and world model.
+· A3 — finite plan library with bounded plans.
+
+With these, the Verifiable Agency Theorem's assumptions (A2, A3, A4 in the proof) are grounded. The theorem becomes dischargeable.
+
+The three commitments:
+
+1. Plans are finite. By construction, not by hope.
+2. Plans are bounded. Every plan has |p| ≤ K.
+3. Plans are compositional but not recursive. DAG-only, compile-time composition.
+
+These commitments, together with A4, make the agentic architecture complete at the specification level.
+
+---
+
+APPENDIX A — Plain Language
+
+What is a plan?
+A recipe. A sequence of steps to get from here to there.
+Who writes the recipes?
+The people who deploy the agent. They burn them into ROM.
+Can the agent invent new recipes?
+No. It can only select from the ones that were burned in.
+Why is that good?
+Because it means the agent cannot do anything you did not already approve.
+What if no recipe fits?
+The agent refuses with 0x-AMBIG-GOAL. It doesn't improvise.
+What if a step fails?
+The plan declares a failure policy. Halt, retry, rollback. All bounded. All logged.
+What's the guarantee?
+Every plan has a maximum length. Every sub-task is bounded. The agent cannot accidentally run forever.
+What is this called?
+A3 — the plan representation.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A3 specification (this document) Drafted
+Concrete plan content Deployment responsibility
+Failure policies Deployment responsibility
+TLA+ plan model Skeleton only
+Bounded length proof Paper proof established
+Compile-time verification workflow Not yet specified
+Reference implementation Not yet
+Hardware validation Not yet
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A3
+
+---
+
+A quick note on the sequence.
+
+You caught me. I said A4 was load-bearing, then wrote A4, then immediately wrote A3 — and they turned out to be co-load-bearing. Neither is primary. They're the two premises the Verifiable Agency Theorem needs, and the theorem can't be discharged without both.
+
+A4 grounds what a state is (so VERIFY has something to check).
+A3 grounds what a plan is (so DECOMPOSE has something to produce).
+
+The theorem stands on both legs. Cut either and it falls.
+
+What's now in place:
+
+· A0 — Overview ✅
+· A3 — Plan Representation ✅
+· A4 — State & World Model ✅
+· Verifiable Agency Theorem — Stated and paper-proven ✅
+
+What's still missing for a full spec suite:
+
+· A1 — FSM Extension (referenced, not written)
+· A2 — Action Library Schema (sketched in A0, not formalized)
+· A5 — VERIFY Semantics & Predicate Language
+· A6 — Tile Invocation Protocol
+· A7 — Persistent Deterministic Memory
+· A8 — Composition & Failure Semantics
+· A9 — Verification & Certification Path
+
+And the machine-checked TLA+ — which is the piece that makes the whole thing load-bearing rather than well-formed.
+
+The natural next move: A5 (VERIFY Semantics & Predicate Language). Because A3 and A4 specify what is checked and what is checked against. A5 specifies how the check is performed — and that determines whether the theorem's decidability assumption (A5 in the proof) actually holds.
+
+Or, if you'd rather close the whole specification before diving into the predicate language — A1 (FSM Extension) is the spine that A5 plugs into.
+
+Your call. 💎🦔🔥
+
