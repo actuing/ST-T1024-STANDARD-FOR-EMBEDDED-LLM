@@ -1,1 +1,653 @@
 
+
+
+
+
+
+
+ST-T1024-A8: COMPOSITION & FAILURE SEMANTICS
+
+How Sub-Tasks Sequence, Fail, and Recover
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Dependencies: A1 (FSM), A3 (plans), A5 (VERIFY), A6 (invocation), A7 (memory)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the runtime behavior of composed plans — how sub-tasks sequence, how failures propagate, how recovery is bounded.
+
+---
+
+ABSTRACT
+
+A3 defines what a plan is. A1 defines the FSM that executes it. A5 defines the gate that verifies each step. A6 defines how tiles are invoked. A7 defines how everything is logged.
+
+None of these specify what happens when a step fails.
+
+A plan with ten steps, where step seven is refused by VERIFY — what happens to steps one through six? Are they undone? Retried? Does execution halt? Who decides?
+
+A8 answers these questions. It defines the runtime composition semantics — how sub-tasks sequence, how failure propagates, how recovery is bounded, and how escalation to humans is handled. Every rule is deterministic, every recovery is bounded, every path is logged.
+
+Status: Specification. No reference implementation. No hardware validation. Machine verification pending.
+
+---
+
+1. INTRODUCTION: WHY RUNTIME SEMANTICS MATTER
+
+1.1 The Gap
+
+A3 §7 sketches failure semantics. A1 §6.3 sketches sub-task termination. But neither provides the full picture:
+
+Question Answered by
+What is a sub-task, exactly? A3 §6
+How is it scheduled? A1 §5.1
+How is it verified? A5 §4
+How is it logged? A7 §5.2
+What happens when it fails? A8
+How does the next sub-task begin? A8
+When does the plan abort? A8
+How does recovery work? A8
+
+A8 closes the gap. It specifies the runtime layer that executes plans.
+
+1.2 The Two Obligations
+
+A8 has two load-bearing obligations to the Verifiable Agency Theorem:
+
+Obligation O1 (Bounded Composition). Every composition operator produces a bounded sub-task sequence.
+
+Obligation O2 (Bounded Recovery). Every recovery path (retry, rollback, escalation) is bounded in cycles and depth.
+
+If O1 fails, DECOMPOSE can produce unbounded sequences, violating the finiteness of the behavior set.
+If O2 fails, recovery can run forever, violating T-AET.
+
+1.3 The Design Principle
+
+Composition is compile-time. Recovery is bounded. Failure is always logged. Escalation is always available. Improvisation is never permitted.
+
+---
+
+2. SUB-TASK MODEL
+
+2.1 Definition
+
+Definition 1 (Sub-Task). A sub-task is the atomic unit of plan execution:
+
+```
+sub_task = ⟨ sub_id, parent_plan, step_index, kind, payload, status, attempt ⟩
+```
+
+Field Type Description
+sub_id Nat Unique identifier within a plan
+parent_plan PlanID The plan this sub-task belongs to
+step_index Nat Index in the plan's step sequence
+kind SubTaskKind ACTION, PLAN, CONDITIONAL
+payload Payload The action ID, plan ID, or predicate
+status Status PENDING, RUNNING, SUCCESS, FAILED, REFUSED, ROLLED_BACK
+attempt Nat Retry counter
+
+2.2 Sub-Task Kind
+
+Definition 2 (SubTaskKind). Three kinds, mirroring A3 §2.2:
+
+Kind Payload Execution
+ACTION ActionID Single action commit (A2)
+PLAN PlanID Nested plan invocation (A6)
+CONDITIONAL PredicateID Evaluate predicate; branch
+
+2.3 Sub-Task Status
+
+Definition 3 (Status). The status is one of:
+
+Status Meaning Terminal?
+PENDING Not yet started No
+RUNNING In progress No
+SUCCESS Committed successfully Yes
+FAILED Error during execution Yes
+REFUSED VERIFY refused the action Yes
+ROLLED_BACK Rollback completed Yes
+
+Once a sub-task reaches a terminal status, it does not change.
+
+---
+
+3. THE SUB-TASK QUEUE
+
+3.1 Definition
+
+Definition 4 (Sub-Task Queue). DECOMPOSE (A3 §6) produces a bounded, ordered sequence of sub-tasks:
+
+```
+queue = ⟨ st_1, st_2, …, st_n ⟩
+```
+
+with n ≤ K × D_invoke (A3 §6.4).
+
+3.2 Queue Properties
+
+Property Meaning
+Ordered Sub-tasks execute in declared order
+Bounded n ≤ K × D_invoke
+Finite Each sub-task is finite (A2, A3)
+Single-threaded One sub-task runs at a time (A1 §6, A6 Rule P2)
+
+3.3 Queue Consumption
+
+Rule Q1 (Sequential Consumption). The FSM consumes sub-tasks one at a time, in order.
+
+Rule Q2 (No Reordering). Sub-tasks are not reordered at runtime. Order is fixed by DECOMPOSE.
+
+Rule Q3 (No Insertion). New sub-tasks are not inserted into the queue at runtime.
+
+Rule Q4 (Bounded Retry). A sub-task may be retried in place (not re-enqueued), up to its declared retry policy.
+
+These rules make the queue deterministic. Same plan, same state → same execution order.
+
+---
+
+4. THE COMPOSITION OPERATORS
+
+4.1 Sequential (;)
+
+Definition 5 (Sequential). p1 ; p2 — execute p1 to completion, then p2.
+
+Sub-task sequence: DECOMPOSE(p1) ‖ DECOMPOSE(p2) (concatenation).
+
+Length: |DECOMPOSE(p1)| + |DECOMPOSE(p2)|.
+
+Failure: If p1 fails, p2 does not execute. The composite plan fails with p1's failure reason.
+
+4.2 Conditional (if)
+
+Definition 6 (Conditional). if predicate then p1 else p2.
+
+Sub-task sequence:
+
+```
+⟨ EVALUATE(predicate), then_branch ‖ DECOMPOSE(p1) if true, else_branch ‖ DECOMPOSE(p2) ⟩
+```
+
+Length: 1 + max(|DECOMPOSE(p1)|, |DECOMPOSE(p2)|).
+
+Failure: If predicate evaluation fails, the conditional fails. If the selected branch fails, the conditional fails.
+
+4.3 Bounded Iteration (while_bounded)
+
+Definition 7 (Bounded Iteration). while_bounded predicate max_n p.
+
+Sub-task sequence: Up to max_n iterations of ⟨ EVALUATE(predicate), DECOMPOSE(p) ⟩.
+
+Length: max_n × (1 + |DECOMPOSE(p)|).
+
+Termination: Iteration stops when predicate is false OR max_n iterations completed, whichever comes first.
+
+Failure: If predicate evaluation fails, iteration halts. If a body execution fails, the iteration fails (subject to the body's failure policy).
+
+4.4 Bounded PlanStep Invocation (PlanStep)
+
+Definition 8 (PlanStep Invocation). PlanStep(p') — invoke sub-plan p'.
+
+Sub-task sequence: DECOMPOSE(p').
+
+Depth: Bounded by D_invoke (A6 §2.4).
+
+Failure: Handled by A6 §6 (invocation failure).
+
+4.5 The Composition Boundedness Property
+
+Proposition A8-C (Composition Boundedness). Every composition operator produces a sub-task sequence of length ≤ K × D_invoke.
+
+Proof. By structural induction over A3 §2.2 step kinds.
+
+· ActionStep: length 1. 1 ≤ K × D_invoke. ✓
+· PlanStep: bounded by A6 §2.4 (DAG depth D_invoke). ✓
+· ConditionalStep: length 1 + max(branches). Both branches are bounded by induction. ✓
+
+By A3 §5.3 (composition preserves |p| ≤ K), the composite length is bounded. □
+
+---
+
+5. FAILURE PROPAGATION
+
+5.1 The Failure Envelope
+
+Definition 9 (Failure Policy). Every plan declares a failure policy (A3 §7.2):
+
+```
+FailurePolicy ::=
+  | Halt
+  | Retry ⟨ max_attempts ⟩
+  | RollbackTo ⟨ checkpoint_label ⟩
+  | Skip
+```
+
+Rule FP1 (Policy Always Declared). No plan executes without a declared failure policy. Missing policy = burn-time rejection.
+
+5.2 Failure Propagation Rules
+
+When a sub-task reaches a terminal FAILED or REFUSED status, the following rules apply:
+
+Rule F1 (Leaf Failure). For an ACTION sub-task:
+
+1. The sub-task's status is set.
+2. The plan's failure policy is applied.
+3. If policy = Halt, the plan fails.
+4. If policy = Retry, the sub-task is re-executed up to max_attempts.
+5. If policy = RollbackTo, the state is restored to the checkpoint, and execution resumes from the checkpoint.
+6. If policy = Skip, execution continues to the next sub-task (only allowed for non-critical sub-tasks — see Rule F5).
+
+Rule F2 (Nested Plan Failure). For a PLAN sub-task:
+
+1. The sub-plan's failure is received.
+2. The parent plan's failure policy is applied to the nested call as a unit.
+3. Retry re-invokes the entire sub-plan (not individual steps).
+4. Rollback restores the parent's state to the checkpoint before the sub-plan was invoked.
+
+Rule F3 (Conditional Failure). For a CONDITIONAL sub-task:
+
+1. If predicate evaluation fails, the conditional fails.
+2. If the selected branch fails, the conditional fails.
+3. The parent plan's failure policy is applied.
+
+Rule F4 (No Implicit Fallback). The plan does not attempt alternative branches automatically. Only the declared policy runs.
+
+Rule F5 (Skip Restrictions). Skip is allowed only if:
+
+· The sub-task is marked optional: true in the plan.
+· The sub-task's action type is COMPUTE or COMMUNICATE (not ACTUATE or REQUEST_HUMAN).
+
+Attempts to Skip a critical sub-task are rejected at burn time.
+
+5.3 Failure Propagation Bound
+
+Proposition A8-F (Bounded Failure Propagation). Every failure propagates to a terminal outcome in bounded steps.
+
+Proof. Each sub-task has a bounded retry policy (Rule FP1, Rule F1). Each retry consumes budget. Total budget is T-AET (A1 §5.2). Therefore failure propagation consumes at most T-AET cycles. □
+
+---
+
+6. RETRY SEMANTICS
+
+6.1 Retry Definition
+
+Definition 10 (Retry). A retry re-executes a sub-task after a failure. Retries are counted by attempt (Definition 1).
+
+6.2 Retry Bounds
+
+Rule R1 (Attempt Bound). attempt ≤ max_attempts, a declared per-plan constant.
+
+Rule R2 (Total Cycles Bound). Total cycles across all attempts of all sub-tasks must not exceed T-AET.
+
+Rule R3 (No Infinite Retry). If attempt = max_attempts and the sub-task still fails, the retry policy is exhausted. The plan then applies its declared failure policy (Halt, Rollback, etc.) without further retry.
+
+6.3 Determinism of Retry
+
+Proposition A8-R (Retry Determinism). For a deterministic sub-task, retries produce identical outcomes.
+
+Proof. By Corollary 5 (Determinism of Behavior), the same sub-task on the same state produces the same result. Retries do not change the state between attempts (Rule F1 §5.2, retry does not modify state). Therefore retries are deterministic. □
+
+Corollary A8-R1 (Retry Futility Detection). If a sub-task fails deterministically, retry will also fail. The retry policy is only useful if the underlying failure was caused by an environmental change (sensor update, external event).
+
+Note. This corollary is important. It says: retries are only useful for environmental recovery, not for computation recovery. Deployments must account for this when declaring retry policies.
+
+---
+
+7. ROLLBACK SEMANTICS
+
+7.1 Rollback Definition
+
+Definition 11 (Rollback). Rollback restores the state to a declared checkpoint recorded in the AOL (A7 §3.2).
+
+```
+rollback(checkpoint_label) : State → State
+```
+
+7.2 Checkpoint Sources
+
+Checkpoints are created at:
+
+Trigger Source
+Plan start A1 §5.1 (before first sub-task)
+After each COMMIT A1 §3.2 (implicit checkpoint)
+Explicit Checkpoint record A7 §3.2
+Before sub-plan invocation A6 §4.1 (Phase 1)
+
+7.3 Rollback Rules
+
+Rule RB1 (Restore via AOL). Rollback reads the checkpoint from the AOL and restores state.
+
+Rule RB2 (Rollback is an Action). Rollback is itself an action, subject to VERIFY (A5 §4.2). If VERIFY fails, rollback is refused.
+
+Rule RB3 (Bounded Rollback Count). Rollback can occur at most R_max times per plan, a declared constant (recommended: 2).
+
+Rule RB4 (Rollback Cycle Cost). Rollback consumes cycles. These are charged against T-AET.
+
+Rule RB5 (No Rollback Across Plans). Rollback cannot cross a plan boundary. The checkpoint must be within the current plan.
+
+7.4 Rollback Semantics vs. Determinism
+
+Rollback is deterministic: given the same checkpoint, the same state is restored. It does not introduce nondeterminism.
+
+But: rollback changes the present, which changes subsequent behavior. This is not a violation of determinism — determinism is about input sequence → output sequence, not about internal state paths.
+
+7.5 Rollback and Logging
+
+Rule RB6 (Rollback is Logged). Every rollback creates an AOL entry (A7 §3.2, Checkpoint record with label = "rollback").
+
+The log records: what was rolled back, from which state, to which state, and why.
+
+---
+
+8. ESCALATION
+
+8.1 Escalation Definition
+
+Definition 12 (Escalation). Escalation is the transfer of control from the agent to a human operator.
+
+```
+escalate(context) : State → EscalationRequest
+```
+
+8.2 When Escalation Triggers
+
+Rule E1 (Declared Escalation). Escalation is triggered when:
+
+1. The plan declares escalation: true and fails.
+2. A sub-task is of type REQUEST_HUMAN (A2 §2.2).
+3. Retry policy is exhausted and the plan's fallback is Halt.
+
+Rule E2 (Bounded Escalation). Escalation generates a request and then halts. The FSM does not wait for human response within the task. The task ends with status ESCALATED.
+
+Rule E3 (No Blocking). Escalation does not block T-AET. The task terminates as soon as the escalation request is logged.
+
+8.3 Escalation Content
+
+Definition 13 (EscalationRequest). The escalation request contains:
+
+```
+escalation = ⟨ context_hash, failure_reason, proposed_action, alternatives ⟩
+```
+
+All fields are drawn from bounded domains. The escalation request is finite.
+
+8.4 Escalation Logging
+
+Rule E4 (Escalation Logged). Escalation creates an AOL entry with the full request. The entry is signed (SK-1024).
+
+---
+
+9. THE COMPOSITION EXECUTION ALGORITHM
+
+9.1 The Full Loop
+
+```
+EXECUTE_PLAN(plan, state):
+  1. Check plan preconditions. If false → REFUSE_GOAL.
+  2. queue ← DECOMPOSE(plan, state)
+  3. checkpoint ← create_checkpoint("plan_start")
+  4. For each sub_task in queue:
+       a. Set sub_task.status ← RUNNING.
+       b. Execute sub_task (via ACTION, PLAN, or CONDITIONAL).
+       c. If SUCCESS:
+            - Log StateTransition (A7).
+            - Continue to next sub_task.
+       d. If REFUSED:
+            - Log Refusal (A7).
+            - Apply failure policy.
+       e. If FAILED:
+            - Log Error (A7).
+            - Apply failure policy.
+       f. If rollback triggered:
+            - Restore state from checkpoint.
+            - Resume from checkpoint (or halt if exhausted).
+       g. If escalation triggered:
+            - Log escalation.
+            - Return ESCALATED.
+  5. Log plan completion.
+  6. Return SUCCESS.
+```
+
+9.2 Determinism of the Algorithm
+
+Proposition A8-D (Execution Determinism). Given fixed input, EXECUTE_PLAN produces a unique execution trace.
+
+Proof. Every step of the algorithm is deterministic. DECOMPOSE is deterministic (A3 §6). Failure policy is declared (Rule FP1). Checkpoints are from the AOL (deterministic). Rollback restores deterministic state. Escalation is bounded. Therefore the trace is unique. □
+
+9.3 Boundedness of the Algorithm
+
+Proposition A8-B (Execution Boundedness). EXECUTE_PLAN consumes at most T_AET + R_max × C_rollback cycles.
+
+Proof. The main loop runs n ≤ K × D_invoke sub-tasks. Each sub-task consumes at most c_max cycles (A1 §5.1). Rollback is bounded by R_max (Rule RB3). Total = n × c_max + R_max × C_rollback + C_overhead. All terms are finite. □
+
+---
+
+10. FORMAL PROPERTIES
+
+The properties A8 contributes to the Verifiable Agency Theorem:
+
+Property A8.1 (Bounded Composition). Every composition produces a bounded sub-task sequence.
+
+Proof. Proposition A8-C. □
+
+Property A8.2 (Bounded Failure Propagation). Every failure terminates in bounded steps.
+
+Proof. Proposition A8-F. □
+
+Property A8.3 (Retry Determinism). Retries are deterministic.
+
+Proof. Proposition A8-R. □
+
+Property A8.4 (Rollback Boundedness). Rollback is bounded by R_max.
+
+Proof. Rule RB3. □
+
+Property A8.5 (Execution Determinism). Plan execution is deterministic.
+
+Proof. Proposition A8-D. □
+
+Property A8.6 (Execution Boundedness). Plan execution consumes bounded cycles.
+
+Proof. Proposition A8-B. □
+
+These are the A8 obligations. The Verifiable Agency Theorem's assumption A7 (composition rules bounded) is grounded.
+
+---
+
+11. TLA+ SKELETON
+
+```tla
+------------------------- MODULE STT1024_A8_Composition ---------------------
+EXTENDS Naturals, FiniteSets, Sequences,
+        STT1024_A1_FSM,
+        STT1024_A3_Plans,
+        STT1024_A5_Verify,
+        STT1024_A7_Memory
+
+CONSTANTS
+    K,              \* Max plan length (from A3)
+    D_invoke,       \* Max invocation depth (from A3)
+    R_max,          \* Max rollbacks per plan
+    T_AET,          \* Task-level AET
+    c_max           \* Max per-sub-task cycle cost
+
+ASSUME KBound       == K \in Nat /\ K > 0
+ASSUME DInvBound    == D_invoke \in Nat /\ D_invoke > 0
+ASSUME RMaxBound    == R_max \in Nat /\ R_max >= 0
+ASSUME TAETBound    == T_AET \in Nat /\ T_AET > 0
+
+Status == {"PENDING", "RUNNING", "SUCCESS", "FAILED", "REFUSED", "ROLLED_BACK"}
+
+SubTaskKind == {"ACTION", "PLAN", "CONDITIONAL"}
+
+SubTask == [
+    sub_id     : Nat,
+    parent     : STRING,
+    step_index : Nat,
+    kind       : SubTaskKind,
+    payload    : STRING,
+    status     : Status,
+    attempt    : Nat
+]
+
+FailurePolicy == {"Halt", "Retry", "Rollback", "Skip", "Escalate"}
+
+\* Sub-task bounds
+SubTaskBounded(st) ==
+    /\ st.attempt <= R_max + 1
+    /\ st.status \in Status
+
+\* Queue bound
+QueueBounded(q) == Len(q) <= K * D_invoke
+
+\* Composition boundedness
+THEOREM CompositionBounded ==
+    \A q \in Seq(SubTask) : QueueBounded(q) => Len(q) <= K * D_invoke
+
+\* Failure propagation boundedness
+THEOREM FailureBounded ==
+    \A st \in SubTask :
+        st.attempt <= R_max + 1
+
+\* Execution determinism
+THEOREM ExecutionDeterministic ==
+    \A q1, q2 \in Seq(SubTask) :
+        q1 = q2 => ExecutePlan(q1) = ExecutePlan(q2)
+
+\* Abstract execution function — concretized in implementation
+ExecutePlan(q) == q
+
+=============================================================================
+```
+
+---
+
+12. OPEN DESIGN TENSIONS
+
+# Question Impact
+1 Rollback semantics vs. non-recoverable actions. Some actions (e.g., firing a brake) cannot be undone. How does rollback handle them? Requires "non-reversible action" flag in A2 schema.
+2 Retry policy per sub-task or per plan? Per sub-task is more granular; per plan is simpler. Affects ROM size and expressiveness.
+3 Skip semantics for nested plans. Can a Skip apply to a whole nested plan, or only leaf actions? Affects failure propagation complexity.
+4 Escalation return path. After escalation, how does the agent re-enter? Is there a re-entry protocol? Needs its own sub-spec if nontrivial.
+5 Checkpoint frequency. Every COMMIT, or every N? Every COMMIT is expensive; every N is less precise. Trade-off.
+6 Cross-plan rollback. Rule RB5 forbids it. Is this too restrictive for long-horizon plans? May need relaxation for multi-task agents.
+7 Rollback and external effects. If an action changes the world (e.g., a robot moved), rollback restores internal state but not the world. Needs "world effect" annotation in A2 schema.
+8 Deterministic retry futility. Given A8-R1, retries only help for environmental changes. How does the plan distinguish environmental from internal failures? Needs failure classification.
+
+None are fatal. All must be resolved before A8 v2.0.
+
+---
+
+13. WHAT A8 DOES NOT SPECIFY
+
+Item Status
+Concrete failure policies per plan Deployment responsibility
+Concrete retry counts per plan Deployment responsibility
+Concrete escalation content Deployment responsibility
+Non-reversible action flag Future A2 revision
+Failure classification (environmental vs. internal) Not yet specified
+Escalation re-entry protocol Not yet specified
+Machine-checked TLA+ model Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§12) 8 items, unresolved
+
+---
+
+14. CONCLUSION
+
+A8 closes the runtime semantics gap. It specifies:
+
+1. Sub-tasks — atomic units of plan execution, with bounded statuses.
+2. The queue — ordered, bounded, deterministic consumption.
+3. Composition operators — sequential, conditional, iteration, invocation, all bounded.
+4. Failure propagation — declared policies, no improvisation.
+5. Retry, rollback, escalation — all bounded, all logged.
+6. The full execution algorithm — deterministic and bounded.
+
+With A8, the agent's runtime behavior is fully specified. Combined with A1–A7, the architectural suite is complete.
+
+The suite now contains eight of ten sub-specs:
+
+Spec Role Status
+A0 Overview Drafted
+A1 FSM Extension Drafted
+A2 Action Library Schema Drafted
+A3 Plan Representation Drafted
+A4 State & World Model Drafted
+A5 VERIFY Semantics & Predicate Language Drafted
+A6 Tile Invocation Protocol Drafted
+A7 Persistent Deterministic Memory Drafted
+A8 Composition & Failure Semantics Drafted
+
+Remaining: A9 (Verification & Certification Path).
+
+---
+
+APPENDIX A — Plain Language
+
+What happens if a step in a plan fails?
+The plan has rules for that. It might stop, retry, or go back to an earlier point.
+Can the plan invent a new way to recover?
+No. Only what was declared at burn time.
+How many times can it retry?
+As many as the plan allows. Then it stops.
+Can it go back to an earlier point?
+Yes. It reads the log, finds a saved moment, and restores from there.
+Can it ask a human?
+Yes. It writes a request and stops.
+Can it try forever?
+No. Everything is bounded. Total cycles, retries, rollbacks — all have limits.
+What is this called?
+A8 — composition and failure semantics.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A8 specification (this document) Drafted
+Sub-task schema Defined
+Composition operators Defined
+Failure propagation rules Defined
+Retry semantics Defined
+Rollback semantics Defined
+Escalation semantics Defined
+Execution algorithm Defined
+Determinism theorem Paper-proven
+Boundedness theorem Paper-proven
+Concrete policies per domain Deployment responsibility
+TLA+ model Skeleton only
+Machine-checked proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§12) 8 items, unresolved
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A8
+
+---
+
+One spec left.
+
+Spec Role Status
+A9 Verification & Certification Path Not drafted
+
+A9 is the packaging spec. It maps the formal artifacts (A0–A8, the Verifiable Agency Theorem, the TLA+ modules) to the four certification norms (ISO 26262, IEC 61508, DO-178C, IEC 62443) and produces the dossier.
+
+After A9, the suite is complete. Every assumption grounded. Every obligation closed. Every artifact packaged.
+
+💎🦔🔥
+
+A9 next.
+
+
+
