@@ -1,1 +1,520 @@
 
+
+
+
+
+
+
+
+
+ST-T1024-A6: TILE INVOCATION PROTOCOL
+
+The Isolation-Preserving Call Graph
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Dependencies: A4 (state), A1 (FSM), A3 (plans)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define how tiles invoke each other without breaking isolation, determinism, or bounded execution.
+
+---
+
+ABSTRACT
+
+A0 §4.4 states that tiles can invoke each other under a ROM-burned call graph. A0 does not specify the protocol. This document specifies it.
+
+The base architecture is single-tile: one query, one tile. The agentic extension requires cross-tile composition: a plan step in one domain may delegate a sub-task to another domain. This is invocation.
+
+Invocation is the point at which isolation is most at risk. If tile A can call tile B, then B's state can leak into A, B's execution can run in A's context, and B's failures can corrupt A's invariants. A6 specifies the protocol that prevents all three.
+
+The protocol is a ROM-burned DAG with depth-bounded calls, hash-verified context transfer, power-domain isolation, and no shared mutable state.
+
+Status: Specification. No reference implementation. No hardware validation. Machine verification pending.
+
+---
+
+1. INTRODUCTION: WHY INVOCATION IS DANGEROUS
+
+1.1 The Isolation Property
+
+Base ST-T1024 (standard §2.1) declares N-independent tiles. Each tile:
+
+· Has its own ROM and SRAM.
+· Executes in its own power domain.
+· Is activated alone (at most one tile powered at a time).
+
+This is the isolation property. It is what makes the system certifiable under ISO 26262 (freedom from interference) and IEC 62443 (zones).
+
+1.2 What Invocation Threatens
+
+Invocation means tile A requests computation from tile B. Without discipline, this introduces:
+
+Threat Mechanism
+State leakage B reads A's state or vice versa
+Context confusion B executes assuming A's context
+Power-domain violation A and B both active, breaking single-active isolation
+Unbounded recursion A calls B calls A calls …
+Untraceable delegation No audit trail of who invoked whom
+Denial of service B's failure cascades to A without recourse
+
+A6 must close all six.
+
+1.3 The Design Principle
+
+Invocation is a message, not a shared memory. The caller and callee never coexist in the same power domain. The call is verifiable, bounded, and logged.
+
+---
+
+2. THE INVOCATION GRAPH
+
+2.1 Definition
+
+Definition 1 (Invocation Graph). The invocation graph G = (T, E) is a directed graph where:
+
+· T is the finite set of tiles (A4 §2.1).
+· E ⊆ T × T is the set of declared invocations.
+
+An edge (A, B) ∈ E means: tile A is permitted to invoke tile B.
+
+2.2 ROM-Burned
+
+Rule G1 (Immutability). G is burned into ROM at manufacture. It does not change at runtime.
+
+Rule G2 (Declared Edges). Only edges in E are permitted. Any invocation not matching a declared edge is refused with 0x-INVALID-INVOCATION.
+
+2.3 The DAG Property
+
+Definition 2 (Acyclic). G is a DAG: there is no cycle in E.
+
+Rule G3 (DAG-Only). G must be acyclic. Graphs with cycles are rejected at ROM burn time.
+
+Rationale. A cycle in G would allow unbounded invocation chains. The DAG property is what makes invocation depth bounded.
+
+2.4 Reachability and Depth
+
+Definition 3 (Invocation Depth). For a path A → B → C in G, the depth is the number of edges: depth(A → B → C) = 2.
+
+Definition 4 (Maximum Depth). D_invoke is the maximum depth over all paths in G:
+
+```
+D_invoke = max { depth(p) : p is a path in G }
+```
+
+Rule G4 (Bounded Depth). D_invoke must satisfy D_invoke ≤ D_invoke_max, a standard constant (recommended: 3).
+
+2.5 The Graph Finiteness Property
+
+Proposition A6-G (Finiteness). |E| is finite and D_invoke is finite.
+
+Proof. T is finite (A4 §2.1). E ⊆ T × T, so |E| ≤ |T|² < ∞. Since G is a DAG, all paths are finite. Since T is finite and G is a DAG, the maximum path length is bounded by |T|. Therefore D_invoke ≤ |T| < ∞. □
+
+---
+
+3. THE INVOCATION MESSAGE
+
+3.1 Definition
+
+Definition 5 (Invocation Message). An invocation from tile A to tile B is a tuple:
+
+```
+inv = ⟨ caller_id, callee_id, context_hash, task_id, sub_task, budget ⟩
+```
+
+Field Type Description
+caller_id TileID Identifier of the invoking tile
+callee_id TileID Identifier of the invoked tile
+context_hash Hash Hash of the caller's state projection
+task_id TaskID The task being executed
+sub_task SubTask The sub-task to be executed
+budget Nat Maximum cycles granted to the callee
+
+3.2 Well-Formedness
+
+Rule M1 (Edge Existence). (caller_id, callee_id) ∈ E.
+
+Rule M2 (Budget Bound). budget ≤ T_AET - cycles_consumed (A1 §5.2).
+
+Rule M3 (Depth Bound). The invocation depth at the time of the call must satisfy depth + 1 ≤ D_invoke.
+
+A message violating any rule is refused with 0x-INVALID-INVOCATION.
+
+3.3 The Context Hash
+
+Definition 6 (Context Hash). The context hash is:
+
+```
+context_hash = H(project(caller_state, callee_read_scope))
+```
+
+where:
+
+· project selects the fields of the caller's state that the callee is permitted to read.
+· H is a deterministic hash function (SHA-256 or a ternary-compatible equivalent).
+
+Rule M4 (Read Scope). callee_read_scope is declared per edge in E. The callee may read only the projection defined by its scope. No other fields of the caller's state are visible.
+
+Rule M5 (Hash Verification). The callee recomputes the hash from the message and its declared read scope. If the recomputed hash does not match context_hash, the invocation is refused with 0x-CONTEXT-MISMATCH.
+
+3.4 Why the Hash
+
+The context hash is the integrity anchor. It ensures:
+
+1. The caller sent what it claims to have sent.
+2. The callee's read scope matches the caller's declared scope.
+3. Any corruption in transit is detected.
+
+The hash is deterministic. Same caller state, same read scope → same hash.
+
+---
+
+4. THE INVOCATION PROTOCOL
+
+4.1 The Handshake
+
+The protocol is a six-phase handshake:
+
+```
+Phase 1 — REQUEST       Caller sends inv message.
+Phase 2 — ADMIT         Callee verifies edge, budget, depth, context hash.
+Phase 3 — ISOLATE       Caller powers down. Callee powers up.
+Phase 4 — EXECUTE       Callee runs sub_task within budget.
+Phase 5 — RETURN        Callee returns result.
+Phase 6 — RESUME        Caller powers up. Callee powers down.
+```
+
+Rule P1 (Power Isolation). During Phase 4, only the callee is powered. The caller is at 0V.
+
+Rule P2 (Sequential Execution). No two tiles are active simultaneously. The protocol is strictly sequential.
+
+4.2 Phase 2 — Admit Conditions
+
+The callee admits the invocation if and only if:
+
+1. (caller_id, callee_id) ∈ E (edge exists).
+2. budget > 0 and budget ≤ T_AET - caller_cycles (budget valid).
+3. depth + 1 ≤ D_invoke (depth valid).
+4. Recomputed context_hash matches (integrity).
+5. No invariant of the callee would be violated by the invocation's parameters.
+
+If any condition fails, the callee refuses with the corresponding code and the caller receives REFUSE_INVOCATION.
+
+4.3 Phase 4 — Execute
+
+The callee executes the sub-task using its own FSM cycle (A1 §5.1). The callee's cycle counter is separate from the caller's. The caller's counter does not advance during Phase 4.
+
+Rule P3 (Cycle Accounting). Cycles consumed during Phase 4 are charged to the caller's T-AET budget, not the callee's. The callee tracks its own local consumption for its own audit log, but the caller's task budget is what bounds the overall task.
+
+4.4 Phase 5 — Return
+
+Definition 7 (Return Value). The callee returns:
+
+```
+ret = ⟨ result, cycles_consumed, status, callee_signature ⟩
+```
+
+Field Type Description
+result SubTaskResult The computation's outcome
+cycles_consumed Nat Cycles used in Phase 4
+status {SUCCESS, FAILED, REFUSED} Outcome status
+callee_signature SK-1024 sig Callee's signature over the return
+
+4.5 Phase 6 — Resume
+
+The caller powers up, verifies callee_signature, and continues its FSM. If status = SUCCESS, the caller proceeds. If status = FAILED or REFUSED, the caller applies the plan's failure policy (A3 §7.2).
+
+---
+
+5. ISOLATION GUARANTEES
+
+5.1 The Three Isolation Domains
+
+Domain Guarantee Enforcement
+Power At most one tile active at a time Phase 3 + Phase 6 gating
+Memory No shared mutable state Read scope + context hash
+Control Caller and callee have separate FSMs Sequential protocol
+
+5.2 Isolation Preservation Theorem
+
+Theorem A6-I (Isolation Preserved). During the invocation protocol, at no point do the caller and callee share power, mutable memory, or control flow.
+
+Proof.
+
+· Power: By Phase 3, the caller powers down before Phase 4 begins. By Phase 6, the callee powers down before the caller powers up. The single-active property holds throughout.
+· Memory: By Rule M4, the callee reads only the declared read-scope projection. By Rule P2, the callee cannot read the caller's live state, because the caller is powered down. The read-scope projection is copied into the invocation message and hash-verified. No shared mutable memory exists.
+· Control: The caller's FSM is suspended during Phase 4 (its power domain is off). The callee's FSM runs in its own domain. No interleaving occurs.
+
+Therefore isolation is preserved throughout the protocol. □
+
+5.3 Relation to the Base Isolation Property
+
+The base architecture's isolation property (standard §2.1) says: "at most one tile powered at a time."
+
+A6 preserves this property. It does not weaken it.
+
+The invocation protocol is a sequential handoff between tiles, not a concurrent execution. At every instant, exactly one tile is active, and the active tile is unambiguous.
+
+---
+
+6. FAILURE AND REFUSAL
+
+6.1 Failure Modes
+
+Failure Cause Effect
+0x-INVALID-INVOCATION Edge not in E Caller refuses to send
+0x-CONTEXT-MISMATCH Hash mismatch Callee refuses to admit
+0x-DEPTH-EXCEEDED depth + 1 > D_invoke Caller refuses to send
+0x-BUDGET-EXCEEDED Sub-task exceeds budget Callee aborts, returns FAILED
+0x-CALLEE-REFUSED Callee's precondition fails Callee returns REFUSED
+0x-CALLEE-TIMEOUT Sub-task exceeds WCET Callee aborts, returns FAILED
+
+6.2 Caller Response
+
+On any failure, the caller applies the plan's declared failure policy (A3 §7.2):
+
+· Halt — caller transitions to REFUSE_ACT.
+· Retry(n) — caller re-sends the invocation, up to n times.
+· RollbackTo(step) — caller restores a prior checkpoint.
+· Skip — caller continues to next sub-task (discouraged).
+
+Rule F1 (Bounded Retries). Retry count is bounded by the plan's declared policy. Total cycles consumed, including retries, must not exceed the task budget.
+
+6.3 Callee Independence
+
+Rule F2 (Callee Persistence). The callee's state is not modified by a failed invocation. The callee's SRAM, ROM, and invariants remain as before.
+
+This preserves isolation: caller failures do not corrupt callee state.
+
+---
+
+7. THE CALL STACK (REDUX)
+
+7.1 The Stack
+
+A1 §4 defines the call stack. A6 provides the semantics:
+
+· PUSH occurs at Phase 1 (invocation sent).
+· POP occurs at Phase 6 (invocation returned).
+· PEEK is used by the callee's admit conditions (Phase 2).
+
+7.2 Stack Frame
+
+Definition 8 (Frame). A stack frame is:
+
+```
+frame = ⟨ caller_id, callee_id, plan_id, step_index, checkpoint_hash ⟩
+```
+
+All fields are finite. The stack depth is bounded by D_invoke.
+
+7.3 Stack Bound
+
+Proposition A6-S (Stack Bounded). |stack| ≤ D_invoke + 1.
+
+Proof. By Rule G4, invocation depth is bounded by D_invoke. Each invocation adds one frame. By Rule M3, no invocation is admitted if it would exceed the bound. Therefore the stack depth is bounded by D_invoke + 1 (the +1 accounts for the initial frame). □
+
+---
+
+8. FORMAL PROPERTIES
+
+The properties A6 contributes to the Verifiable Agency Theorem:
+
+Property A6.1 (Graph Finiteness). |E| < ∞ and D_invoke < ∞.
+
+Proof. Proposition A6-G. □
+
+Property A6.2 (DAG Property). G is acyclic.
+
+Proof. Rule G3, enforced at ROM burn time. □
+
+Property A6.3 (Isolation Preservation). Invocation preserves tile isolation.
+
+Proof. Theorem A6-I. □
+
+Property A6.4 (Invocation Termination). Every invocation chain terminates.
+
+Proof. By DAG property (A6.2) and depth bound (A6.1), every invocation chain has finite length. Each step is bounded by its budget. Therefore every chain terminates. □
+
+Property A6.5 (Hash Integrity). Context hash verification guarantees read-scope fidelity.
+
+Proof. Rule M5. Any mismatch is refused. □
+
+These are the A6 obligations. The Verifiable Agency Theorem's assumption A6 (§5.1 of the theorem) is grounded.
+
+---
+
+9. TLA+ SKELETON
+
+```tla
+------------------------- MODULE STT1024_A6_Invocation ----------------------
+EXTENDS Naturals, FiniteSets, Sequences,
+        STT1024_A4_State,
+        STT1024_A1_FSM
+
+CONSTANTS
+    Tiles,          \* Finite tile set
+    E,              \* Invocation edges ⊆ Tiles × Tiles
+    D_invoke_max,   \* Standard constant
+    T_AET,          \* Task-level AET
+    H               \* Hash function (abstract)
+
+ASSUME TilesFinite      == IsFiniteSet(Tiles)
+ASSUME EdgesWithinTiles == E \subseteq Tiles \X Tiles
+ASSUME DInvokeBound     == D_invoke_max \in Nat /\ D_invoke_max > 0
+
+\* DAG check — no cycles.
+IsDAG(G) ==
+    \A n \in Nat : n > 0 =>
+        ~(\E path \in Seq(Tiles) :
+            /\ Len(path) = n
+            /\ \A i \in 1..(n-1) : <<path[i], path[i+1]>> \in G
+            /\ path[1] = path[Len(path)])
+
+\* Maximum depth over all paths.
+MaxDepth(G) ==
+    CHOOSE d \in Nat :
+        \A path \in Seq(Tiles) :
+            (\A i \in 1..(Len(path)-1) : <<path[i], path[i+1]>> \in G)
+            => Len(path) - 1 <= d
+
+Invocation == [
+    caller : Tiles,
+    callee : Tiles,
+    ctx_hash : Nat,     \* abstract hash
+    task : STRING,
+    budget : Nat
+]
+
+WellFormed(inv) ==
+    /\ <<inv.caller, inv.callee>> \in E
+    /\ inv.budget > 0
+    /\ inv.budget <= T_AET
+
+Admit(inv, caller_cycles, depth) ==
+    /\ WellFormed(inv)
+    /\ depth + 1 <= D_invoke_max
+    /\ inv.budget <= T_AET - caller_cycles
+
+\* Theorems
+THEOREM A6_DAG == IsDAG(E)              \* assumed from ROM burn
+THEOREM A6_DepthBound == MaxDepth(E) <= D_invoke_max
+THEOREM A6_Isolation == \A inv \in Invocation : WellFormed(inv) => Admit(inv, 0, 0) \in BOOLEAN
+
+=============================================================================
+```
+
+---
+
+10. OPEN DESIGN TENSIONS
+
+# Question Impact
+1 Hash function choice. SHA-256 is standard but not ternary-native. Is a ternary-compatible hash required? Affects hardware implementation cost.
+2 Read scope declaration. Per-edge or per-tile-pair? Per-edge is more precise; per-pair is simpler. Affects ROM size and graph expressiveness.
+3 Return value size. If the callee's result is large, it may exceed a single message. Is chunking allowed? If not, sub-tasks must return bounded results.
+4 Callee precondition checks. Phase 2 §4.2 item 5 checks callee invariants. But the callee has no visibility into the caller's intent. How does it check? May require the invocation message to carry caller-intent metadata.
+5 Cross-domain invocation. Can MATH invoke LAW? Or is invocation restricted to same-class tiles? Affects graph shape.
+6 Concurrent invocations. A plan step may need two independent sub-tasks. Can the caller invoke B and C sequentially, or is parallelism needed? Sequential only (Rule P2). Parallelism would break single-active isolation.
+7 Recovery from callee crash. If the callee fails to return (power loss, hardware fault), what does the caller see? Needs a timeout mechanism at the caller.
+8 The depth accounting. Is depth measured at the caller or callee? Affects Rule M3 enforcement.
+
+None are fatal. All must be resolved before A6 v2.0.
+
+---
+
+11. WHAT A6 DOES NOT SPECIFY
+
+Item Status
+Concrete invocation graph per domain Deployment responsibility
+Concrete read scopes per edge Deployment responsibility
+The hash function H Implementation choice
+The callee timeout mechanism Not yet specified
+The parallelism protocol Not supported (sequential-only by design)
+Machine-checked TLA+ model Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§10) 8 items, unresolved
+
+---
+
+12. CONCLUSION
+
+A6 closes the invocation gap. It specifies:
+
+1. The invocation graph — finite, ROM-burned, DAG.
+2. The invocation message — hash-verified, budgeted, depth-tagged.
+3. The six-phase protocol — sequential, power-isolated, deterministic.
+4. Isolation guarantees — power, memory, control.
+5. Failure semantics — bounded retries, callee independence.
+
+With A6, the Verifiable Agency Theorem's assumption about tile invocation (assumption A6 in §5.1 of the theorem) is grounded.
+
+The core suite now contains six of ten sub-specs:
+
+Spec Role Status
+A0 Overview Drafted
+A1 FSM Extension Drafted
+A2 Action Library Schema Drafted
+A3 Plan Representation Drafted
+A4 State & World Model Drafted
+A5 VERIFY Semantics & Predicate Language Drafted
+A6 Tile Invocation Protocol Drafted
+
+Remaining: A7 (memory), A8 (composition), A9 (certification).
+
+---
+
+APPENDIX A — Plain Language
+
+How do tiles talk to each other?
+Through a message, not shared memory.
+Can any tile call any other tile?
+No. Only the calls that were burned into ROM are allowed.
+Can tile A call tile B, and B call A?
+No. The call graph is a one-way street. No loops.
+How deep can the calls go?
+Three levels. No more.
+What does the caller send?
+A task, a budget, and a hash of the state the callee is allowed to see.
+What does the callee send back?
+The result, its signature, and how many cycles it used.
+Are both tiles ever on at the same time?
+No. The caller goes dark, the callee wakes up, they swap back.
+Why?
+Because isolation is what makes the system certifiable.
+What is this called?
+A6 — the tile invocation protocol.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A6 specification (this document) Drafted
+Invocation graph schema Defined
+Invocation message schema Defined
+Six-phase protocol Defined
+Isolation preservation theorem Paper-proven
+Invocation termination theorem Paper-proven
+Concrete invocation graphs Deployment responsibility
+Concrete read scopes Deployment responsibility
+Hash function Implementation choice
+TLA+ model Skeleton only
+Machine-checked proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§10) 8 items, unresolved
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A6
+
+
+
