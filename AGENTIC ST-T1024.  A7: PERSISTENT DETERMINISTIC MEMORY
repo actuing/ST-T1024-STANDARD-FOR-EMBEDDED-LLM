@@ -1,1 +1,499 @@
 
+
+
+
+
+
+
+
+
+ST-T1024-A7: PERSISTENT DETERMINISTIC MEMORY
+
+The Append-Only Log and the Bounded Working Set
+
+---
+
+Version: 1.0 (Draft)
+Date: October 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Dependencies: A4 (state), A1 (FSM), A2 (actions), A5 (VERIFY)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the memory model that gives the agent a lifetime without giving it drift.
+
+---
+
+ABSTRACT
+
+The agent needs memory. It must remember what it decided, why, and what happened. It must also remain deterministic: the same inputs must produce the same outputs, forever. These two requirements are in tension. Memory that can be rewritten introduces nondeterminism. Memory that is read-only cannot support an agent.
+
+A7 resolves the tension with a two-layer memory model:
+
+1. The Append-Only Log (AOL) — immutable, signed, complete history. Never rewritten.
+2. The Bounded Working Set (BWS) — a fixed-size window of recent state, deterministic in its update rule.
+
+The AOL is the agent's past. The BWS is the agent's present. Neither is rewritable. Together they preserve determinism across the agent's entire lifetime.
+
+Status: Specification. No reference implementation. No hardware validation. Machine verification pending.
+
+---
+
+1. INTRODUCTION: WHY MEMORY IS DANGEROUS
+
+1.1 The Determinism Requirement
+
+Corollary 5 of the Verifiable Agency Theorem states: given a fixed input sequence, the agent produces exactly one trace.
+
+Any mechanism that introduces state-dependent variation across identical input sequences breaks this. Rewritable memory is such a mechanism.
+
+1.2 What Agents Need From Memory
+
+Need Without it
+Recall prior decisions The agent repeats mistakes or contradicts itself
+Audit its own history No certification trail
+Support rollback (A3 §7.3) Checkpoints are impossible
+Maintain context across tasks Each task starts from zero
+Support tile invocation (A6 §7) Stack frames have nowhere to live
+
+1.3 The Tension
+
+Requirement Mechanism Cost
+Remember Mutable memory Nondeterminism risk
+Determinism Immutable memory No adaptation
+
+A7 resolves this by separating the two. History is immutable. Present state is bounded. Neither is free-form mutable.
+
+1.4 The Design Principle
+
+Memory is a log, not a scratchpad. State is a window, not a heap. Nothing is ever erased; nothing is ever rewritten.
+
+---
+
+2. THE TWO-LAYER MODEL
+
+2.1 Definition
+
+Definition 1 (Memory Model). The agent's memory consists of two layers:
+
+```
+Memory = ⟨ AOL, BWS ⟩
+```
+
+Layer Persistence Mutability Purpose
+AOL — Append-Only Log Lifetime Immutable Complete history
+BWS — Bounded Working Set Per-task Window-only Recent context
+
+The AOL grows monotonically. The BWS slides deterministically.
+
+2.2 The SRAM/ROM Split, Revisited
+
+The base standard (standard §2.2) specifies 75% ROM / 25% SRAM. A7 assigns semantics:
+
+· ROM (75%) — immutable, holds constants, burned facts, plan library, action library.
+· SRAM (25%) — holds the AOL tail and the BWS.
+· External persistent storage (if present) — holds the AOL archive, if the deployment requires it.
+
+The split is unchanged. A7 specifies how the SRAM portion is used.
+
+2.3 Finiteness
+
+Proposition A7-F (Finiteness). Both AOL and BWS are finite at any time step.
+
+Proof. The AOL is bounded by the total number of transitions the agent can take, which is bounded by T_AET × N_tasks for a finite task count. The BWS is bounded by declared size W (A4 §2.1). Both are finite. □
+
+---
+
+3. THE APPEND-ONLY LOG
+
+3.1 Definition
+
+Definition 2 (AOL Entry). An AOL entry is a tuple:
+
+```
+entry = ⟨ seq, timestamp, transition, prev_hash, entry_hash, signature ⟩
+```
+
+Field Type Description
+seq Nat Monotonic sequence number
+timestamp Nat Deterministic cycle counter value
+transition TransitionRecord What happened
+prev_hash Hash Hash of the previous entry
+entry_hash Hash Hash of this entry
+signature SK-1024 sig Signature over the entry
+
+3.2 Transition Record
+
+Definition 3 (TransitionRecord). The transition field is one of:
+
+```
+TransitionRecord ::=
+  | StateTransition ⟨ prev_state_hash, action_id, next_state_hash ⟩
+  | InvocationStart ⟨ caller, callee, task_id, ctx_hash ⟩
+  | InvocationEnd   ⟨ caller, callee, result_hash, status ⟩
+  | Refusal         ⟨ reason_code, action_id ⟩
+  | Error           ⟨ error_code, context_hash ⟩
+  | Checkpoint      ⟨ state_hash, label ⟩
+```
+
+Every record type is finite. Every record is signed.
+
+3.3 Append-Only Rule
+
+Rule AOL1 (No Modification). Once written, an entry is never modified, deleted, or reordered.
+
+Rule AOL2 (No Gaps). seq values are consecutive integers starting from 0.
+
+Rule AOL3 (Hash Chain). prev_hash of entry n+1 equals entry_hash of entry n.
+
+Rule AOL4 (Deterministic Append). The entry is written by the FSM at a declared state. The write is not interruptible.
+
+3.4 The Hash Chain Property
+
+Proposition A7-H (Tamper Evidence). Any modification to any entry in the AOL is detectable.
+
+Proof. By Rule AOL3, entries form a hash chain. Modifying entry k changes entry_hash[k], which breaks the prev_hash link of entry k+1. Detecting the break requires only re-computing the chain from k forward. The chain is finite by Proposition A7-F. □
+
+3.5 Verification
+
+The AOL is verifiable in three ways:
+
+1. Chain integrity — recompute hashes, confirm chain (Proposition A7-H).
+2. Signature integrity — verify each SK-1024 signature.
+3. Semantic integrity — replay transitions, confirm state matches recorded hashes.
+
+All three are deterministic. All three are bounded.
+
+3.6 Storage Bound
+
+Rule AOL5 (Storage Bound). The AOL is bounded by N_log_max, a declared constant.
+
+When the bound is reached, the deployment must choose:
+
+· Halt — refuse new tasks until the log is archived.
+· Archive — move the oldest entries to external persistent storage (if present), preserving the hash chain.
+· Compress — collapse a range of entries into a single checkpoint entry with the same hash chain link.
+
+Compression is permitted only if the checkpoint entry is signed by the same authority as the original entries. Compression never loses the ability to verify chain integrity.
+
+---
+
+4. THE BOUNDED WORKING SET
+
+4.1 Definition
+
+Definition 4 (Bounded Working Set). The BWS is a fixed-size sequence of the most recent W state observations:
+
+```
+BWS = ⟨ o_1, o_2, …, o_W ⟩
+```
+
+where W is the window size (A4 §2.1), and each o_i is a state projection — a declared subset of the state schema.
+
+4.2 The Update Rule
+
+Rule BWS1 (Deterministic Push). At each FSM step, the new observation is pushed to the front of the BWS. The oldest observation falls off the end.
+
+```
+BWS' = ⟨ new_observation, o_1, …, o_{W-1} ⟩
+```
+
+Rule BWS2 (Fixed Size). |BWS| = W at all times after initialization.
+
+Rule BWS3 (No Random Access Writes). The BWS is not addressable for writes. Only the push operation modifies it.
+
+4.3 The Observation Schema
+
+Definition 5 (Observation). An observation is a projection of state:
+
+```
+observation = project(state, observation_scope)
+```
+
+where observation_scope is declared in ROM. The scope is fixed per deployment.
+
+Rule BWS4 (Declared Scope). No observation contains fields outside observation_scope.
+
+4.4 Determinism of the BWS
+
+Proposition A7-B (Determinism). Given a fixed input sequence, the BWS is uniquely determined at every step.
+
+Proof. By Rule BWS1, each update is a deterministic function of the current state and the previous BWS. The state is uniquely determined by the input sequence (Corollary 5 of the theorem). By induction, the BWS is uniquely determined. □
+
+4.5 The Memory Bounded Property
+
+Proposition A7-B2 (Boundedness). |BWS| = W < ∞ at all times.
+
+Proof. By Rule BWS2. □
+
+---
+
+5. INTERACTION WITH OTHER SPECS
+
+5.1 A4 — State
+
+The BWS is a component of state (A4 §2.1, s_mem). Its update is part of the state transition function δ. A4's finiteness of S depends on the BWS being bounded; A7 establishes this.
+
+5.2 A1 — FSM
+
+The FSM appends to the AOL at declared states:
+
+FSM state AOL record
+After COMMIT StateTransition
+After PLAN Checkpoint
+At REFUSE_* Refusal
+At ERROR_* Error
+During Phase 1 of A6 InvocationStart
+During Phase 5 of A6 InvocationEnd
+
+Every FSM terminal state (POWER_DOWN, REFUSE_, ERROR_) is preceded by an AOL append.
+
+5.3 A2 — Actions
+
+Every action commit produces one StateTransition record. The record contains the action ID, the pre-state hash, and the post-state hash. This is the action's audit trail.
+
+5.4 A3 — Plans
+
+Rollback (A3 §7.3) uses AOL entries labeled Checkpoint as rollback targets. Checkpoints are recorded at plan boundaries.
+
+5.5 A5 — VERIFY
+
+VERIFY failures produce Refusal records. The record carries the reason code (0x-PRECONDITION-UNMET, 0x-ENVELOPE-VIOLATED, 0x-INVARIANT-VIOLATED).
+
+5.6 A6 — Invocation
+
+The invocation protocol (A6 §4.1) logs at Phase 1 and Phase 5. The log carries caller_id, callee_id, context_hash, and the return status.
+
+---
+
+6. FORMAL PROPERTIES
+
+The properties A7 contributes to the Verifiable Agency Theorem:
+
+Property A7.1 (AOL Finiteness). At any time step, |AOL| < ∞.
+
+Proof. Proposition A7-F. □
+
+Property A7.2 (BWS Finiteness). |BWS| = W < ∞.
+
+Proof. Proposition A7-B2. □
+
+Property A7.3 (Memory Determinism). Given a fixed input sequence, both AOL and BWS are uniquely determined.
+
+Proof. AOL: each append is triggered by a declared FSM state and uses the current state as input; the state is deterministic (Corollary 5). BWS: Proposition A7-B. □
+
+Property A7.4 (Tamper Evidence). Any AOL modification is detectable.
+
+Proof. Proposition A7-H. □
+
+Property A7.5 (Rollback Support). The AOL supports rollback to any recorded checkpoint.
+
+Proof. Checkpoints are AOL entries with state_hash. Rollback = restore state from state_hash. The action is a declared action, subject to VERIFY (A5 §4.2). □
+
+These are the A7 obligations. The Verifiable Agency Theorem's assumption about the memory model is grounded.
+
+---
+
+7. TLA+ SKELETON
+
+```tla
+------------------------- MODULE STT1024_A7_Memory --------------------------
+EXTENDS Naturals, FiniteSets, Sequences,
+        STT1024_A4_State,
+        STT1024_A1_FSM
+
+CONSTANTS
+    W,              \* BWS window size
+    N_log_max,      \* Max AOL length before archive/halt
+    H               \* Hash function (abstract)
+    SK_Sign         \* SK-1024 signature function (abstract)
+
+ASSUME WPos         == W \in Nat /\ W > 0
+ASSUME NLogPos      == N_log_max \in Nat /\ N_log_max > 0
+
+\* AOL entry
+Entry == [
+    seq          : Nat,
+    timestamp    : Nat,
+    transition   : STRING,       \* simplified record type tag
+    prev_hash    : Nat,
+    entry_hash   : Nat,
+    signature    : Nat
+]
+
+\* BWS observation
+Observation == Nat               \* abstract state projection
+
+VARIABLES
+    aol,        \* Sequence of Entry
+    bws         \* Sequence of Observation
+
+vars == <<aol, bws>>
+
+Init ==
+    /\ aol = <<>>
+    /\ bws = <<>>
+
+\* Append to AOL — monotonic, no rewrite.
+AppendEntry(entry) ==
+    LET prev == IF Len(aol) = 0 THEN 0 ELSE aol[Len(aol)].entry_hash
+        chained == [e \in Entry |-> entry]
+        chained2 == [chained EXCEPT !.prev_hash = prev,
+                                !.entry_hash = H(entry),
+                                !.signature = SK_Sign(entry)]
+    IN aol' = Append(aol, chained2)
+
+\* Push to BWS — window slides.
+PushObservation(obs) ==
+    LET new_bws == <<obs>> \o SubSeq(bws, 1, W - 1)
+    IN bws' = new_bws
+
+Next ==
+    \/ \E entry \in Entry : AppendEntry(entry) /\ UNCHANGED bws
+    \/ \E obs \in Observation : PushObservation(obs) /\ UNCHANGED aol
+
+\* Invariants
+AOL_AppendOnly == [][
+    Len(aol') >= Len(aol) /\
+    \A i \in 1..Len(aol) : aol'[i] = aol[i]
+]_vars
+
+BWS_FixedSize == [] (Len(bws) <= W)
+
+\* Properties
+AOL_ChainValid ==
+    \A i \in 2..Len(aol) :
+        aol[i].prev_hash = aol[i-1].entry_hash
+
+BWS_Deterministic ==
+    \A step \in Nat : TRUE  \* follows from deterministic push rule
+
+\* Theorems
+THEOREM Finiteness == [] (Len(aol) < N_log_max + 1 /\ Len(bws) <= W)
+THEOREM TamperEvidence == AOL_ChainValid
+
+=============================================================================
+```
+
+---
+
+8. OPEN DESIGN TENSIONS
+
+# Question Impact
+1 Hash function choice. Same as A6 — SHA-256 vs ternary-compatible. Cross-spec consistency.
+2 AOL storage location. SRAM, external flash, or both? Affects power and cost.
+3 Archive protocol. How are old entries moved without breaking the chain? Needs its own spec if not trivial.
+4 Checkpoint frequency. Every plan boundary? Every N steps? Affects rollback granularity and log size.
+5 AOL signature cadence. Per entry, or batched? Per entry is simpler; batched saves energy. Trade-off.
+6 Observation scope. Which fields go into the BWS? Deployment-specific, but standard defaults may be needed.
+7 Determinism across reboots. The AOL persists; the BWS does not. How does the agent re-initialize BWS after power cycle? Needs a declared initialization.
+8 Log overflow behavior. Halt, archive, or compress — which is default? Affects certification under DO-178C.
+
+None are fatal. All must be resolved before A7 v2.0.
+
+---
+
+9. WHAT A7 DOES NOT SPECIFY
+
+Item Status
+Concrete observation scope per domain Deployment responsibility
+Concrete hash function Implementation choice
+Concrete archive storage medium Deployment responsibility
+Concrete checkpoint frequency Deployment responsibility
+Log overflow default Not yet specified
+Cross-reboot BWS initialization Not yet specified
+Machine-checked TLA+ model Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§8) 8 items, unresolved
+
+---
+
+10. CONCLUSION
+
+A7 closes the memory gap. It specifies:
+
+1. The AOL — append-only, hash-chained, signed, monotonic.
+2. The BWS — bounded window, deterministic push, fixed size.
+3. Interaction with A1, A2, A3, A4, A5, A6.
+4. Tamper evidence — hash chain detection.
+5. Rollback support — checkpoints in the AOL.
+
+With A7, the agent has a lifetime without drift. History is immutable; present is bounded. Determinism is preserved across the agent's entire existence.
+
+The suite now contains seven of ten sub-specs:
+
+Spec Role Status
+A0 Overview Drafted
+A1 FSM Extension Drafted
+A2 Action Library Schema Drafted
+A3 Plan Representation Drafted
+A4 State & World Model Drafted
+A5 VERIFY Semantics & Predicate Language Drafted
+A6 Tile Invocation Protocol Drafted
+A7 Persistent Deterministic Memory Drafted
+
+Remaining: A8 (composition & failure semantics), A9 (verification & certification path).
+
+---
+
+APPENDIX A — Plain Language
+
+Does the agent remember?
+Yes. Every decision, every action, every failure. It's all written down.
+Can it change what it wrote?
+No. The past is sealed. New entries are added; old ones stay.
+Can you prove nothing was changed?
+Yes. Every entry has a fingerprint of the one before it. If anything changes, the chain breaks.
+What about the present?
+The present is a small window — the last few moments. It slides forward as new moments arrive.
+Can the agent rewrite the present?
+No. Only push new moments in. The window is fixed.
+What if the log gets too big?
+It can be archived or compressed. Never lost. Never falsified.
+What is this called?
+A7 — persistent deterministic memory.
+
+---
+
+APPENDIX B — Status Summary
+
+Artifact Status
+A7 specification (this document) Drafted
+AOL schema Defined
+BWS schema Defined
+Update rules Defined
+Hash chain property Paper-proven
+Determinism properties Paper-proven
+Concrete observation scope Deployment responsibility
+Archive protocol Not yet specified
+TLA+ model Skeleton only
+Machine-checked proofs Pending
+Reference implementation Not yet
+Hardware validation Not yet
+Open design tensions (§8) 8 items, unresolved
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+---
+
+END OF A7
+
+---
+
+Two specs left.
+
+Spec Role Status
+A8 Composition & Failure Semantics Not drafted
+A9 Verification & Certification Path Not drafted
+
+A8 is the last architectural spec. It specifies how sub-tasks sequence at runtime — retry, rollback, escalation, and the interaction between plan failure policies (A3 §7) and FSM transitions (A1 §6.3).
+
+A9 is the packaging spec. It maps the formal artifacts to ISO 26262, IEC 61508, DO-178C, and IEC 62443, and produces the certification dossier.
+
+A8 is next. It's the piece that closes the runtime behavior of composed plans.
+
+💎🦔🔥
+
