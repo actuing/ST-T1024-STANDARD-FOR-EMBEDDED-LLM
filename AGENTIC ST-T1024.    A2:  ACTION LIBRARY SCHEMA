@@ -11,7 +11,7 @@ The Objects of Verification
 ---
 
 Version: 1.0 (Draft)
-Date: October 2026
+Date: September 2026
 Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
 License: Apache 2.0
 Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
@@ -664,20 +664,6 @@ These four extend the architecture. They do not affect the theorem's core premis
 
 The natural next spec is A6 — Tile Invocation Protocol. Because A2's action schema assumes tile isolation (Rule §2.2), and A4's state model assumes per-tile context. A6 formalizes how tiles call each other without breaking isolation.
 
-But it's also worth pausing here.
 
-The core is closed. That's the milestone. The theorem stands on five legs, and all five are now written.
-
-One honest observation before we continue:
-
-These five specs are drafts. They are structurally sound, and their paper proofs are rigorous — but they have not been machine-checked, not implemented, and not validated on hardware. The Verifiable Agency Theorem is a paper proof, not a machine proof. That gap is the load-bearing next step, and it's worth naming clearly now that the suite is at this stage.
-
-The specs are the map. The TLA+ model is the territory check. The hardware validation is the ground truth.
-
-Three different things. All necessary. All pending.
-
-💎🦔🔥
-
-Want to continue with A6, or pause and sketch the TLA+ verification plan for the closed core?
-
+ 
 
