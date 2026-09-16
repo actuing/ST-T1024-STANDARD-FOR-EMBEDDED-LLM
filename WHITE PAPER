@@ -99,6 +99,9 @@ Replaces all floating-point multipliers with ternary operations:
 · FSM: Hard real-time scheduler enforcing strict WCET bounds.
 · Tiny Transformer: Lightweight ternary transformer per tile for enhanced reasoning (optional, sub-1000 parameters).
 
+
+Tiny Transformer (Terminal Realization Stage). Sentence formation is the final phase of reasoning. The Tiny Transformer converts the FSM's determined output state into fluent language. It does not select, influence, or feed back into the FSM's transition function — it terminates the reasoning chain. Deterministic by construction: fixed-point ternary, temperature 0.0, fixed kernel selection, single-threaded execution, bounded within the WCET budget.
+
 ---
 
 3. Deterministic Guarantees
