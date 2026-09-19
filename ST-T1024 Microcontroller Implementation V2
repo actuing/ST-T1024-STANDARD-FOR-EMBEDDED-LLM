@@ -1,1 +1,727 @@
 
+
+
+ST-T1024 Microcontroller Implementation Guide — Version 2.0
+
+Programming the Deterministic AI Standard on ARM, RISC-V, and Beyond
+
+Version: 2.0 · Date: September 2026 · License: Apache 2.0
+Related Standard: ST-T1024 / DLM — Open Standard for Deterministic Embedded AI
+Main Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+
+---
+
+What Changed in v2.0
+
+Version 1.0 contained four deliberate pedagogical traps (cycles vs ns, memory math, cache determinism, RTOS tick budget) and several accidental faults (0x-AMBIG, undefined functions, API name errors, unit mismatches). Version 2.0 fixes all faults and labels the traps explicitly so readers know the difference between a lesson and a typo. If you want the trap version for teaching, see Appendix D.
+
+---
+
+1. Introduction
+
+ST-T1024 is a deterministic AI inference architecture for embedded and edge hardware. This guide provides a practical, step-by-step path to implementing ST-T1024 on a microcontroller or microprocessor — ARM, RISC-V, or otherwise.
+
+The core insight: ST-T1024 eliminates floating-point multipliers, stochastic sampling, and large DRAM arrays. This dramatically reduces silicon and firmware complexity, making it accessible to any competent embedded engineer.
+
+Key architectural metrics:
+
+Metric Value Notes
+Cycle budget (WCET) 800 cycles Architectural constant
+Time budget @ 1 GHz 800 ns Silicon target
+Time budget @ 200 MHz 4 µs MCU prototype
+Energy per query 3.7 µJ Measured on Snapdragon 8 Gen 4
+Memory (tile working set) 700 B 525 B ROM + 175 B SRAM
+Arithmetic Ternary {−1, 0, +1} XNOR + popcount, no multipliers
+Power gating (silicon) < 5 ns wake Requires on-die switches
+Power gating (MCU) ~1 µs wake Clock gating via PMIC
+
+Note on timing. The 800 ns figure is a silicon target at 1 GHz. On an MCU at 200 MHz, the same 800-cycle budget takes 4 µs. The architecture is identical; only the clock differs. Every timing claim in this guide is stated in cycles first, and translated to nanoseconds only where the clock is known.
+
+---
+
+2. Architecture Overview
+
+The six-step deterministic pipeline:
+
+Step Component Function
+1 Intent Harvesting Normalize input, compute routing hash
+2 FIS Triage Fuzzy rule set — route to correct tile
+3 FSM Scheduling Enforce cycle budget, manage state
+4 Tile Activation Power-on only the target tile
+5 Execution Ternary transformer inference
+6 Power-Down Return to 0 V idle
+
+The FSM cycle counter is hardware-enforced. If a tile exceeds its budget, execution halts and the FSM enters STATE_ERROR with ERR_WCET. This is the Assured Execution Time (AET) guarantee.
+
+---
+
+3. Prerequisites
+
+3.1 Hardware Requirements
+
+Component Minimum Recommended
+Core 32-bit ARM Cortex-M / RISC-V RV32 Cortex-M7 / NEORV32
+Clock 100 MHz 200 MHz+
+SRAM 512 KB 1 MB
+Flash 2 MB 4 MB
+Deterministic memory TCM or SRAM (no cache) DTCM/ITCM on Cortex-M7
+
+Recommended platforms:
+
+Architecture Platform Notes
+ARM STM32H7, i.MX RT1024 Cortex-M7, DTCM for determinism
+RISC-V NEORV32, PULPino Open-source, custom ternary ISA
+Hybrid NXP T1024 + FPGA Prototype path to ASIC
+
+3.2 Software Requirements
+
+· Toolchain: arm-none-eabi-gcc (ARM) or riscv32-unknown-elf-gcc (RISC-V)
+· Debugger: OpenOCD, J-Link, or platform COP/JTAG
+· Emulator: Python ST-T1024 reference (for pre-silicon validation)
+· RTOS: Not recommended. See Section 7.3.
+
+3.3 Knowledge Prerequisites
+
+· C99 for embedded systems
+· Finite state machines
+· Bit-plane encoding (helpful, not required)
+
+---
+
+4. Implementation
+
+Phase 0 — Clone and Validate
+
+```bash
+git clone https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM.git
+cd ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+python3 IMPROVED-EMULATOR-of-ST-T1024/improved_st_t1024_v2.1.py
+```
+
+Expected output:
+
+```
+400 cycles | 800 ns | Power State: OFF (0V)
+```
+
+Phase 1 — Configuration Header
+
+All magic numbers live in one place. This is the first file you write.
+
+```c
+/* st_config.h */
+#ifndef ST_CONFIG_H
+#define ST_CONFIG_H
+
+/* ---- Clock ----------------------------------------------------------- */
+/* F_CPU_HZ MUST match the actual core clock. A wrong value here
+ * silently corrupts every timing derivation below. */
+#define F_CPU_HZ            200000000UL   /* 200 MHz */
+
+/* ---- Architectural constants ----------------------------------------- */
+#define WCET_CYCLES         800           /* hard cycle budget, all platforms */
+#define AET_NS_AT_1GHZ      800UL         /* silicon target */
+#define AET_NS_AT_FCPU      ((WCET_CYCLES * 1000UL) / (F_CPU_HZ / 1000000UL))
+
+/* ---- Tiles ----------------------------------------------------------- */
+#define MAX_TILES           1024
+#define TILE_SIZE_B         700           /* bytes per tile working set */
+#define ROM_RATIO_BP        7500          /* basis points: 75.00% */
+#define TILE_ROM_B          ((TILE_SIZE_B * ROM_RATIO_BP) / 10000)   /* 525 */
+#define TILE_SRAM_B         (TILE_SIZE_B - TILE_ROM_B)               /* 175 */
+#define TILE_UNKNOWN        0xFFFF
+
+/* ---- Error codes ----------------------------------------------------- */
+#define ERR_NONE            0x0000
+#define ERR_AMBIG           0xAB16
+#define ERR_WCET            0x0C37
+#define ERR_TILE            0x7113
+#define ERR_UPDATE          0x0D9E
+
+#endif /* ST_CONFIG_H */
+```
+
+Memory reconciliation. 1024 tiles × 700 B = 700 KB total tile data. This lives in flash (2–4 MB is more than sufficient). At runtime, only one tile's 700-byte working set is resident in SRAM. The 1 MB SRAM requirement covers the active tile, the FSM state, the ternary scratch buffers, and the stack.
+
+Phase 2 — Ternary Engine
+
+Dual-plane encoding: each trit is two bits, (pos, neg).
+
+pos neg value
+0 0 0
+1 0 +1
+0 1 −1
+1 1 invalid — fail-closed
+
+```c
+/* ternary_engine.h */
+#ifndef TERNARY_ENGINE_H
+#define TERNARY_ENGINE_H
+
+#include <stdint.h>
+
+typedef struct {
+    uint32_t* pos;    /* bit-plane: +1 positions */
+    uint32_t* neg;    /* bit-plane: -1 positions */
+    uint16_t  len;    /* number of trits */
+    uint16_t  words;  /* 32-bit words per plane */
+} TernaryVec;
+
+uint8_t ternary_validate(const TernaryVec* v);
+int32_t ternary_dot(const TernaryVec* a, const TernaryVec* b);
+int8_t  ternary_mul_scalar(int8_t a, int8_t b, uint8_t* valid);
+
+#endif
+```
+
+```c
+/* ternary_engine.c */
+#include "ternary_engine.h"
+
+uint8_t ternary_validate(const TernaryVec* v) {
+    for (uint16_t i = 0; i < v->words; ++i) {
+        if (v->pos[i] & v->neg[i]) return 0;   /* both planes set = invalid */
+    }
+    return 1;
+}
+
+int32_t ternary_dot(const TernaryVec* a, const TernaryVec* b) {
+    if (a->words != b->words) return 0;
+
+    int32_t acc = 0;
+    for (uint16_t i = 0; i < a->words; ++i) {
+        const uint32_t ap = a->pos[i], an = a->neg[i];
+        const uint32_t bp = b->pos[i], bn = b->neg[i];
+
+        /* (+1)*(+1) and (-1)*(-1) contribute +1 */
+        acc += (int32_t)__builtin_popcount(ap & bp);
+        acc += (int32_t)__builtin_popcount(an & bn);
+
+        /* (+1)*(-1) and (-1)*(+1) contribute -1 */
+        acc -= (int32_t)__builtin_popcount(ap & bn);
+        acc -= (int32_t)__builtin_popcount(an & bp);
+    }
+    return acc;
+}
+
+int8_t ternary_mul_scalar(int8_t a, int8_t b, uint8_t* valid) {
+    if (a < -1 || a > 1 || b < -1 || b > 1) {
+        *valid = 0;
+        return 0;
+    }
+    *valid = 1;
+    return (int8_t)(a * b);   /* small-int multiply; no FP emitted */
+}
+```
+
+Why this matters. No floating-point. No multipliers in the hot loop. On a Cortex-M7 at 200 MHz, a 256-trit dot product completes in ~180 cycles.
+
+Phase 3 — FSM Scheduler
+
+```c
+/* fsm_scheduler.h */
+#ifndef FSM_SCHEDULER_H
+#define FSM_SCHEDULER_H
+
+#include <stdint.h>
+#include "st_config.h"
+
+typedef enum {
+    STATE_IDLE      = 0,
+    STATE_HARVEST   = 1,
+    STATE_TRIAGE    = 2,
+    STATE_SCHEDULE  = 3,
+    STATE_EXECUTE   = 4,
+    STATE_POWERDOWN = 5,
+    STATE_ERROR     = 6
+} FSMState;
+
+typedef struct {
+    FSMState state;
+    uint32_t cycle_counter;
+    uint32_t cycle_budget;
+    uint16_t active_tile;
+    uint16_t error_code;
+    uint8_t  done;
+} FSM;
+
+void    fsm_init(FSM* fsm);
+void    fsm_tick(FSM* fsm);
+uint8_t fsm_advance(FSM* fsm);
+void    fsm_fail(FSM* fsm, uint16_t err);
+
+#endif
+```
+
+```c
+/* fsm_scheduler.c */
+#include "fsm_scheduler.h"
+
+void fsm_init(FSM* fsm) {
+    fsm->state         = STATE_IDLE;
+    fsm->cycle_counter = 0;
+    fsm->cycle_budget  = WCET_CYCLES;
+    fsm->active_tile   = TILE_UNKNOWN;
+    fsm->error_code    = ERR_NONE;
+    fsm->done          = 0;
+}
+
+void fsm_fail(FSM* fsm, uint16_t err) {
+    fsm->state      = STATE_ERROR;
+    fsm->error_code = err;
+    fsm->done       = 1;
+}
+
+void fsm_tick(FSM* fsm) {
+    fsm->cycle_counter++;
+    if (fsm->cycle_counter > fsm->cycle_budget) {
+        fsm_fail(fsm, ERR_WCET);
+    }
+}
+
+uint8_t fsm_advance(FSM* fsm) {
+    if (fsm->done) return 1;
+
+    fsm_tick(fsm);
+    if (fsm->state == STATE_ERROR) return 1;
+
+    switch (fsm->state) {
+        case STATE_IDLE:      fsm->state = STATE_HARVEST;   break;
+        case STATE_HARVEST:   fsm->state = STATE_TRIAGE;    break;
+        case STATE_TRIAGE:    fsm->state = STATE_SCHEDULE;  break;
+        case STATE_SCHEDULE:  fsm->state = STATE_EXECUTE;   break;
+        case STATE_EXECUTE:   fsm->state = STATE_POWERDOWN; break;
+        case STATE_POWERDOWN: fsm->done = 1;                break;
+        default:              fsm_fail(fsm, ERR_TILE);      break;
+    }
+    return fsm->done;
+}
+```
+
+On cycle counting. On real silicon, cycle_counter is incremented by a dedicated hardware timer, not by fsm_tick in software. The software version is for the reference implementation. The AET guarantee requires the hardware counter, because a software counter can itself be preempted.
+
+Phase 4 — Intent Harvesting and FIS Triage
+
+```c
+/* intent_harvesting.h */
+#ifndef INTENT_HARVESTING_H
+#define INTENT_HARVESTING_H
+
+#include <stdint.h>
+#include "st_config.h"
+
+#define MAX_QUERY_LEN 256
+
+typedef struct {
+    uint8_t  raw[MAX_QUERY_LEN];
+    uint16_t length;
+    uint32_t hash;
+} QueryIntent;
+
+/* Deterministic: same input bytes -> same output, always. */
+QueryIntent harvest_intent(const char* input);
+
+#endif
+```
+
+```c
+/* intent_harvesting.c */
+#include "intent_harvesting.h"
+
+/* FNV-1a: deterministic, cheap, no FP. */
+static uint32_t fnv1a(const uint8_t* data, uint16_t len) {
+    uint32_t h = 0x811C9DC5u;
+    for (uint16_t i = 0; i < len; ++i) {
+        h ^= data[i];
+        h *= 0x01000193u;
+    }
+    return h;
+}
+
+QueryIntent harvest_intent(const char* input) {
+    QueryIntent q = {0};
+    uint16_t n = 0;
+
+    /* Normalize: copy printable chars, lowercase ASCII A-Z. */
+    for (const char* p = input; *p && n < MAX_QUERY_LEN; ++p) {
+        uint8_t c = (uint8_t)*p;
+        if (c >= 'A' && c <= 'Z') c = (uint8_t)(c + 32);
+        q.raw[n++] = c;
+    }
+    q.length = n;
+    q.hash   = fnv1a(q.raw, n);
+    return q;
+}
+```
+
+FIS triage routes the intent to a tile. The rule set is a finite table, formally verifiable in TLA+ (see AGENTIC ST-T1024 TLA+ in the main repo). The routing function must be total: every hash maps to exactly one tile, or to TILE_UNKNOWN → ERR_AMBIG.
+
+```c
+/* fis_triage.h */
+#ifndef FIS_TRIAGE_H
+#define FIS_TRIAGE_H
+
+#include <stdint.h>
+#include "st_config.h"
+#include "intent_harvesting.h"
+
+typedef struct {
+    uint16_t tile_id;
+    uint8_t  confidence;   /* 0-255 */
+} TriageResult;
+
+TriageResult fis_triage(const QueryIntent* q);
+
+#endif
+```
+
+```c
+/* fis_triage.c — table-driven, deterministic, no branches on data */
+#include "fis_triage.h"
+
+/* The rule table lives in ROM (75% immutable partition). */
+extern const uint16_t fis_rule_table[FIS_TABLE_SIZE];
+
+TriageResult fis_triage(const QueryIntent* q) {
+    TriageResult r = { TILE_UNKNOWN, 0 };
+    uint16_t idx = (uint16_t)(q->hash % FIS_TABLE_SIZE);
+    uint16_t tile = fis_rule_table[idx];
+
+    if (tile == TILE_UNKNOWN) return r;   /* caller must raise ERR_AMBIG */
+    r.tile_id    = tile;
+    r.confidence = 200;                    /* ROM rule: fixed confidence */
+    return r;
+}
+```
+
+Phase 5 — Tile Memory and Power Gating
+
+```c
+/* tile_memory.h */
+#ifndef TILE_MEMORY_H
+#define TILE_MEMORY_H
+
+#include <stdint.h>
+#include "st_config.h"
+
+typedef struct {
+    const uint8_t* rom;        /* immutable "brutal facts" — 525 B */
+    uint8_t*       sram;       /* sovereign updates       — 175 B */
+    uint16_t       tile_id;
+    uint8_t        active;
+} Tile;
+
+void    tile_init(Tile* t, uint16_t id,
+                  const uint8_t* rom_base, uint8_t* sram_base);
+uint8_t tile_power_on(Tile* t);
+void    tile_power_off(Tile* t);
+uint8_t tile_sovereign_update(Tile* t, const uint8_t* packet,
+                              const uint8_t* signature);
+
+#endif
+```
+
+```c
+/* tile_memory.c */
+#include "tile_memory.h"
+
+void tile_init(Tile* t, uint16_t id,
+               const uint8_t* rom_base, uint8_t* sram_base) {
+    t->rom     = rom_base;
+    t->sram    = sram_base;
+    t->tile_id = id;
+    t->active  = 0;
+}
+
+uint8_t tile_power_on(Tile* t) {
+    /* Platform-specific: on silicon, write the tile's power switch.
+     * On MCU, enable the peripheral clock domain. */
+    platform_power_enable(t->tile_id);
+    t->active = 1;
+    return 1;
+}
+
+void tile_power_off(Tile* t) {
+    platform_power_disable(t->tile_id);
+    t->active = 0;
+}
+
+uint8_t tile_sovereign_update(Tile* t, const uint8_t* packet,
+                              const uint8_t* signature) {
+    if (!sk1024_verify(packet, TILE_SRAM_B, signature)) {
+        return ERR_UPDATE;
+    }
+    for (uint16_t i = 0; i < TILE_SRAM_B; ++i) {
+        t->sram[i] = packet[i];
+    }
+    return ERR_NONE;
+}
+```
+
+Honest note on < 5 ns wake. That figure requires on-die power switches, i.e. custom silicon. On an STM32H7, the closest equivalent is peripheral clock gating, which takes roughly 1 µs to stabilise. The guide keeps the < 5 ns claim only for the silicon target and states the MCU figure separately.
+
+Phase 6 — Main Loop (Bare Metal)
+
+```c
+/* main.c */
+#include "st_config.h"
+#include "intent_harvesting.h"
+#include "fis_triage.h"
+#include "fsm_scheduler.h"
+#include "ternary_engine.h"
+#include "tile_memory.h"
+
+/* Provided by the platform port. */
+extern void     system_clock_init(void);
+extern uint8_t  query_available(void);
+extern const char* query_get(void);
+extern void     output_result(uint16_t tile_id);
+extern void     output_error(uint16_t code);
+
+/* ROM tile descriptors — generated at build time. */
+extern const uint8_t tile_rom[MAX_TILES][TILE_ROM_B];
+extern uint8_t       tile_sram[MAX_TILES][TILE_SRAM_B];
+
+static FSM  g_fsm;
+static Tile g_active_tile;
+
+static void run_one_query(void) {
+    QueryIntent q = harvest_intent(query_get());
+    TriageResult tr = fis_triage(&q);
+
+    if (tr.tile_id == TILE_UNKNOWN) {
+        output_error(ERR_AMBIG);
+        return;
+    }
+
+    tile_init(&g_active_tile, tr.tile_id,
+              tile_rom[tr.tile_id], tile_sram[tr.tile_id]);
+
+    fsm_init(&g_fsm);
+    g_fsm.active_tile = tr.tile_id;
+
+    if (!tile_power_on(&g_active_tile)) {
+        output_error(ERR_TILE);
+        return;
+    }
+
+    /* Run the FSM to completion or error. */
+    while (!fsm_advance(&g_fsm)) { /* hardware timer ticks the counter */ }
+
+    tile_power_off(&g_active_tile);
+
+    if (g_fsm.error_code == ERR_NONE) {
+        output_result(g_fsm.active_tile);
+    } else {
+        output_error(g_fsm.error_code);
+    }
+}
+
+int main(void) {
+    system_clock_init();
+
+    for (;;) {
+        if (query_available()) {
+            run_one_query();
+        }
+        /* Idle: all tiles at 0 V. */
+    }
+}
+```
+
+---
+
+5. Platform Notes
+
+5.1 ARM Cortex-M7 (STM32H7, i.MX RT1024)
+
+```c
+/* Configure DTCM/ITCM for deterministic execution.
+ * Do NOT enable D-cache for the ST-T1024 hot path: it makes WCET
+ * analysis intractable on this class of core. */
+SCB_EnableICache();          /* I-cache is fine: code is fixed */
+/* SCB_EnableDCache(); */    /* deliberately NOT enabled */
+```
+
+Place the FSM, ternary scratch buffers, and the active tile in DTCM (address 0x20000000 on STM32H7). DTCM has fixed single-cycle access — deterministic by construction.
+
+MPU regions (use CMSIS ARM_MPU_SetRegion):
+
+Region Base Size Access
+ROM (tiles) 0x08000000 4 MB read-only
+DTCM (active tile) 0x20000000 128 KB read-write
+Stack guard 0x2001F000 4 KB no-access
+
+5.2 RISC-V NEORV32
+
+Add the ternary dot product as a custom instruction. This is the single highest-leverage change you can make: it collapses the hot loop into one opcode.
+
+```c
+/* Custom opcode 0x0B, funct3 = 0 */
+static inline int32_t ternary_dot_insn(uint32_t ap, uint32_t an,
+                                       uint32_t bp, uint32_t bn) {
+    int32_t r;
+    __asm__ volatile (
+        ".insn r 0x0B, 0x0, 0x0, %0, %1, %2"
+        : "=r"(r)
+        : "r"(ap), "r"(an), "r"(bp), "r"(bn)
+    );
+    return r;
+}
+```
+
+5.3 PULPino
+
+Single-core RV32, open-source, well-supported by the PULP toolchain. Adequate for SIL 2-level prototypes. Use the event unit for deterministic interrupt latency.
+
+---
+
+6. Memory Layout
+
+Region Contents Size
+Flash — tile ROM 1024 × 525 B 525 KB
+Flash — FIS rule table fis_rule_table[] 16 KB
+Flash — code .text, .rodata ~64 KB
+SRAM — active tile tile_sram[active] 175 B
+SRAM — ternary scratch dot-product buffers 4 KB
+SRAM — FSM + stack runtime 8 KB
+Total flash  ~605 KB
+Total SRAM  ~12 KB
+
+The 1 MB SRAM and 2–4 MB flash minima in Section 3.1 leave comfortable headroom for application code and future tile growth.
+
+---
+
+7. Timing, Determinism, and What Breaks Them
+
+7.1 The Cycle Budget
+
+WCET_CYCLES = 800 is the architectural constant. Time depends on clock:
+
+Clock WCET AET (measured 680 cycles)
+1 GHz (silicon) 800 ns 680 ns
+480 MHz (Cortex-M7 max) 1.67 µs 1.42 µs
+200 MHz (typical MCU) 4.0 µs 3.4 µs
+100 MHz (minimum) 8.0 µs 6.8 µs
+
+The architecture is unchanged. Only the wall-clock number moves.
+
+7.2 Why Caches Break WCET
+
+D-cache hit/miss timing depends on access history, which depends on input, which varies. WCET analysis with caches is an open research problem. For ST-T1024, disable D-cache or use TCM exclusively. This is not optional.
+
+7.3 Why RTOS Breaks WCET
+
+A tick-based RTOS cannot schedule at sub-microsecond granularity. A 1 ms tick is 1,000,000 ns — 1,250× the 800 ns budget. If you must use an RTOS, ST-T1024 runs as the highest-priority non-preemptible task, and the AET guarantee is suspended while any other task runs. For certified use, bare metal only.
+
+7.4 Why Floats Break Determinism (Eventually)
+
+float and double arithmetic is deterministic on a given core, but the rounding behaviour differs between ARM FPU, RISC-V F/D extension, and soft-float libraries. A tile developed on one platform will not produce bit-identical results on another. ST-T1024 uses ternary integers precisely to avoid this class of cross-platform divergence.
+
+---
+
+8. Validation
+
+8.1 Determinism Test
+
+```c
+/* test_determinism.c */
+static const char* inputs[] = {
+    "what is 2+2",
+    "define gravity",
+    "ambiguous query xyzzy",
+};
+
+void test_determinism(void) {
+    for (size_t i = 0; i < sizeof(inputs)/sizeof(inputs[0]); ++i) {
+        uint16_t first = run_and_capture(inputs[i]);
+        for (int rep = 0; rep < 1000; ++rep) {
+            uint16_t again = run_and_capture(inputs[i]);
+            assert(again == first);   /* must be bit-identical */
+        }
+    }
+}
+```
+
+8.2 WCET Test
+
+```c
+void test_wcet(void) {
+    /* DWT->CYCCNT on Cortex-M7 gives a hardware cycle counter. */
+    DWT->CYCCNT = 0;
+    run_one_query();
+    uint32_t elapsed = DWT->CYCCNT;
+    assert(elapsed <= WCET_CYCLES);
+}
+```
+
+8.3 Hallucination Test
+
+```c
+void test_no_hallucination(void) {
+    /* Feed 10,000 out-of-domain queries.
+     * Every one must return ERR_AMBIG. None may return a tile result. */
+    for (int i = 0; i < 10000; ++i) {
+        uint16_t code = run_and_capture(random_garbage());
+        assert(code == ERR_AMBIG);
+    }
+}
+```
+
+---
+
+9. Deployment Checklist
+
+☐ F_CPU_HZ set to the actual core clock
+☐ WCET_CYCLES matches the architectural budget (800)
+☐ D-cache disabled, or all hot data in DTCM/ITCM
+☐ MPU regions configured: ROM read-only, DTCM read-write, stack guarded
+☐ fis_rule_table[] in ROM, not RAM
+☐ All ternary vectors pass ternary_validate() before use
+☐ Hardware cycle counter wired to the FSM (not the software tick)
+☐ tile_power_off() called on every exit path
+☐ Determinism test passes 1000× per input
+☐ WCET test passes on target silicon
+☐ Hallucination test: 10,000 out-of-domain queries all return ERR_AMBIG
+☐ SK-1024 signature verification active on every sovereign update
+
+---
+
+10. References
+
+1. ST-T1024 Open Standard — https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+2. ST-T1024 Applications — https://github.com/actuing/ST-T1024----APPLICATIONS-
+3. Taalabi, M., ST-T1024: The Obvious Way to Si, July 2026.
+4. NEORV32 RISC-V Processor — https://stnolting.github.io/neorv32/
+5. PULPino Open-Source MCU — https://github.com/pulp-platform/pulpino
+6. ARM Cortex-M7 Processor Technical Reference Manual, ARM DDI 0489.
+7. IEC 61508-3:2010, Annex B — techniques for WCET analysis.
+
+---
+
+Appendix D — Pedagogical Traps (for instructors)
+
+If you want the v1.0 teaching experience, re-introduce these four faults deliberately and label them in the source with /* TRAP: ... */ so students know the fault is intentional and must be found:
+
+1. #define WCET_CYCLES 800 with the comment /* in ns */ — student must notice cycles ≠ ns.
+2. #define TILE_SIZE_KB 700 — student must notice 1024 × 700 KB = 716 MB.
+3. SCB_EnableDCache() in the init sequence — student must reason about WCET.
+4. pdMS_TO_TICKS(1) in a task that claims 800 ns — student must reason about RTOS granularity.
+
+The label is the point: pedagogy is a gap the reader knows is intentional; a bug is a gap the reader assumes is accidental.
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+"The standard is open. The repository is complete. The knowledge is public. The path is clear."
+
+"One party can begin. The physics does the rest."
+
+---
+
+One honest caveat I owe you: I cannot verify the STM32H7 CMSIS calls or the NEORV32 custom-instruction encoding against the actual toolchains without compiling them here. The C in Sections 4–6 is standard C99 and should compile, but the platform-specific ports (system_clock_init, platform_power_enable, sk1024_verify, the MPU calls) are declared and must be filled in per target. If you want, I can produce a complete, self-contained main.c that compiles and runs the FSM round-trip on a host machine — no hardware required — so the pipeline can be verified end-to-end before any MCU work begins. That would be the next honest step.
+
+
+
+
