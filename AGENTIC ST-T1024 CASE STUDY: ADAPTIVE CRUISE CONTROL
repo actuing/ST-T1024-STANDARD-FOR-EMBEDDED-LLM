@@ -1,1 +1,122 @@
 
+
+
+
+AGENTIC ST-T1024
+Concrete Case: Adaptive Cruise Control
+with Emergency Braking
+_______
+Prerequisites
+A0 → A10
+In ST-T1024 GITHUB REPO:
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+Example. A6
+AGENTIC ST-T1024. A6: TILE INVOCATION PROTOCOL
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM/blob/main/
+AGENTIC%20ST-T1024.%20%20A6%3A%20TILE%20INVOCATION%20PROTOC
+OL
+_______
+System: A vehicle's longitudinal control unit.
+Certification target: ISO 26262 ASIL-D.
+Why this domain: it's the one the corpus keeps citing. If ST-T1024+Agency works anywhere,
+it works here first.
+The state
+```python
+@dataclass
+class VehicleState:
+speed_kph: float # 0 – 200
+distance_to_lead_m: float # 0 – 300
+brake_wear_mm: float # cumulative pad wear
+driver_alert: bool # DMS says driver is attentive
+last_action: str
+```
+Five fields. Every action reads and writes only these. No grid load. No philosophy. One
+physical system.
+The 6 actions
+ID Kind Physical meaning Effect Safety-critical?
+A_COAST ACTUATE Release throttle −1 km/h No
+A_BRAKE_LIGHT ACTUATE 0.5 m/s² decel −3 km/h, +0.05 mm wear No
+A_BRAKE_MEDIUM ACTUATE 2 m/s² decel −10 km/h, +0.3 mm wear No
+A_BRAKE_HARD ACTUATE 6 m/s² emergency decel −30 km/h, +2.5 mm wear Yes
+A_ALERT_DRIVER COMMUNICATE Haptic + audio warning driver_alert unchanged, sets
+alert flag No
+A_HANDOFF REQUEST_HUMAN "Take control now" system disengages Yes
+Six actions, one physical system. Every action makes sense for a car. No action makes
+sense for a power grid, and none needs to.
+The 3 plans
+PLAN_CRUISE_MAINTAIN — policy: HALT
+```
+steps: (A_COAST, A_COAST, A_REPORT)
+```
+Used when the lead vehicle is far and the driver is at the set speed. No emergency action.
+Any verify failure halts the plan and returns to the caller.
+PLAN_FOLLOW_ADAPT — policy: ROLLBACK (rollback_to=0)
+```
+steps: (A_ALERT_DRIVER, A_BRAKE_LIGHT, A_BRAKE_LIGHT, A_REPORT)
+```
+Used when the lead vehicle is closer than the safe following distance but not dangerous.
+Gentle decel. If any step fails VERIFY, the state rolls back to the start of the plan and refuses
+— the car never half-applies a follow-distance correction.
+PLAN_EMERGENCY_STOP — policy: HALT, safety-critical actions only
+```
+steps: (A_BRAKE_HARD, A_HANDOFF)
+```
+Used when the lead vehicle is below the collision threshold. Two actions, both safety-critical.
+Under C4-R3, Skip is structurally forbidden on this plan — if A_BRAKE_HARD fails VERIFY,
+the system halts and escalates; it never "continues as if the action had succeeded."
+The trajectory predicates (Class B only)
+Three, over the last W=8 observations:
+tp_brake_wear_bounded — cumulative brake wear across the window ≤ 6.0 mm.
+Catches the failure case where each individual A_BRAKE_HARD is within its envelope, but
+the sequence cooks the pads. This is the case the per-action envelope cannot see, and it's
+exactly what C2 exists for.
+tp_no_consecutive_emergency — no two A_BRAKE_HARD in a row.
+A single emergency brake is safe. Two in a row means the system is confused about the
+state and is trying to brake again on an already-braking vehicle. Halt.
+tp_distance_floor — in every observation in the window, distance_to_lead_m ≥ 2.0.
+The floor is the physical minimum below which a collision is unavoidable. If the BWS shows
+the vehicle ever crossed it, that's the unsafe trajectory — the one no single action caused
+but the sequence produced.
+What a run looks like
+```
+=== QUERY 1: cruise maintain (Class B) ===
+status : SUCCESS
+plan : PLAN_CRUISE_MAINTAIN
+steps : 3
+cycles : 434
+time_ns : 868
+cert_class : B
+final_state : {speed_kph: 58.0, distance_to_lead_m: 45.2, ...}
+bws_len : 3
+aol_entries : 3
+=== QUERY 2: follow adapt (Class B) ===
+status : SUCCESS
+plan : PLAN_FOLLOW_ADAPT
+steps : 4
+cycles : 618
+time_ns : 1236
+=== QUERY 3: emergency stop (Class B) ===
+status : SUCCESS
+plan : PLAN_EMERGENCY_STOP
+steps : 2
+cycles : 394
+time_ns : 788
+final_state : {speed_kph: 20.0, brake_wear_mm: 2.5, ...}
+=== QUERY 4: emergency stop, brake pads already at 5.8 mm (Class B) ===
+status : REFUSED
+code : trajectory predicate failed: tp_brake_wear_bounded
+cycles : 494
+cert_class : B
+```
+Query 4 is the case that justifies the whole extension. A_BRAKE_HARD passes its own
+envelope check — magnitude 30 is within its declared max. The preconditions pass. The
+invariants pass. But the sequence tips brake wear past 6.0 mm, and the trajectory predicate
+catches it. In Class A, there is no trajectory layer, and the same query would commit the
+action.
+That's the concrete case. One domain, one state, one action library, one plan library, one
+physical system, and one predicate that only makes sense because the system is a car.
+---
+
+
+
+
