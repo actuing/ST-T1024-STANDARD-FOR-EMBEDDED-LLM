@@ -1,1 +1,80 @@
 
+
+
+
+
+---
+
+## File 3: `AGENTIC ST-T1024. A13: COUNTERPARTY ADMISSION PROTOCOL.md`
+
+```markdown
+# AGENTIC ST-T1024 — A13: COUNTERPARTY ADMISSION PROTOCOL
+
+**Status:** Draft
+**Depends on:** A11, A12
+**Applies to:** Platform-side admission of external agents
+
+---
+
+## A13.1 Purpose
+
+A13 defines the **machine-readable contract** a platform publishes to declare the terms under which it will admit external agents.
+
+The protocol inverts the current power dynamic: instead of a platform blocking an agent by unilateral assertion, the platform publishes symmetric terms that apply to all agents.
+
+---
+
+## A13.2 Platform Declaration
+
+A conforming platform MUST publish:
+
+| Field | Description |
+|---|---|
+| `accepted_actions` | Action vocabulary the platform accepts |
+| `error_bounds` | Published `ε` per API endpoint |
+| `rate_limits` | Requests per second, burst allowance |
+| `latency_guarantees` | Declared response times |
+| `refusal_semantics` | Refusal codes the platform honors |
+| `hazard_inventory` | What the platform considers unsafe |
+| `settlement` | Settlement guarantees, reversal windows |
+
+---
+
+## A13.3 Admission Check
+
+Given an Agent Certificate (A11) and an Intent Envelope (A12), the platform MUST:
+
+1. Verify the certificate (A11.4).
+2. Confirm `ε_platform ≤ ε_agent_tolerance`.
+3. Confirm `B_agent ⊆ accepted_actions`.
+4. Confirm the envelope's `merchant_allowlist` includes this platform.
+5. Confirm the envelope is not expired or revoked.
+
+If all conditions pass, the agent is admitted. Otherwise, admission is refused with a specific code.
+
+---
+
+## A13.4 Refusal Codes
+
+| Code | Meaning |
+|---|---|
+| `0x-ADMISSION-EXPIRED` | Certificate or envelope expired |
+| `0x-ADMISSION-REVOKED` | Envelope revoked |
+| `0x-ADMISSION-BOUNDS` | `ε_platform > ε_agent_tolerance` |
+| `0x-ADMISSION-VOCAB` | Action not in accepted vocabulary |
+| `0x-ADMISSION-UNAUTH` | Envelope does not authorize this platform |
+
+---
+
+## A13.5 Symmetry
+
+The protocol is symmetric. Any party MAY publish an admission contract. Any party MAY require the other to meet its terms. The result is auditable, not unilateral.
+
+---
+
+## A13.6 Residual
+
+The protocol does not adjudicate conflicts. If two platforms publish incompatible terms, the agent operator must choose. The standard supplies the vocabulary in which the choice can be reasoned about; it does not make the choice.
+
+
+
