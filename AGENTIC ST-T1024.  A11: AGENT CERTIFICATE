@@ -1,1 +1,86 @@
 
+
+# AGENTIC ST-T1024 — A11: AGENT CERTIFICATE
+
+**Status:** Draft
+**Depends on:** A0–A10
+**Applies to:** Inter-organizational admission
+
+---
+
+## A11.1 Purpose
+
+A11 defines the **portable, machine-verifiable artifact** by which one organization assesses the behavioral closure of another organization's agent before granting it access to customers, accounts, or transactions.
+
+The certificate is the answer to the question: *"What will this agent do?"* It is verifiable without trusting the agent operator.
+
+---
+
+## A11.2 Contents
+
+An Agent Certificate MUST contain:
+
+| Field | Description |
+|---|---|
+| `version` | Certificate format version |
+| `agent_id` | Stable identifier of the agent |
+| `operator_id` | Organization operating the agent |
+| `B` | Action library, with contracts, envelopes, signatures |
+| `P` | Plan library, with policies (HALT / ROLLBACK / atomic) |
+| `C` | Composition rules, Δt bounds, window W |
+| `hazard_matrix` | Hazard → Predicate → Window → Threshold |
+| `ear` | Environment Assumption Register (three layers) |
+| `mode` | `sovereign` or `compositional`, with proof obligation met |
+| `epsilon` | Projected asymptotic refusal floor |
+| `rom_hash` | Hash of the current ROM image |
+| `signature_chain` | Friday session signatures (see A16) |
+| `issued_at` | Timestamp |
+| `expires_at` | Timestamp |
+
+---
+
+## A11.3 Format Requirements
+
+- The certificate MUST be serialized in a **public, open format**.
+- Recommended: JSON Schema for structure, CBOR for canonical serialization, Ed25519 for signatures.
+- A proprietary format is non-conformant. The certificate's value depends on third-party verifiability.
+
+---
+
+## A11.4 Verification Procedure
+
+A verifier MUST be able to:
+
+1. Validate all signatures against declared public keys.
+2. Recompute `rom_hash` and compare.
+3. Check `expires_at`.
+4. Confirm `mode` matches the proof obligation discharged.
+5. Read `epsilon` and `ear` without operator assistance.
+
+If any step fails, the certificate is **void**.
+
+---
+
+## A11.5 Refusal Conditions
+
+If a counterparty presents a certificate that cannot be verified, the correct response is:
+
+    refuse admission
+
+There is no partial verification. There is no "trust but verify." The certificate either verifies or it does not.
+
+---
+
+## A11.6 Relation to A0–A10
+
+A11 is the **external face** of the intra-organizational machinery. `B`, `P`, `C`, `hazard_matrix`, and `ear` are produced by A0–A10. A11 packages them for inspection by a party that has no access to the agent's internals.
+
+---
+
+## A11.7 Residual
+
+The certificate is only as good as the three signers on it. See Appendix D (Human Trust Root). The certificate's authority rests on personal accountability, not on cryptographic verification alone.
+
+
+
+
