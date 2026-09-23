@@ -1,1 +1,81 @@
 
+
+
+
+# AGENTIC ST-T1024 — A14: ACTION VOCABULARY MAPPING
+
+**Status:** Draft
+**Depends on:** A11, A13
+**Applies to:** Cross-organizational action alignment
+
+---
+
+## A14.1 Purpose
+
+A14 defines the **provable mapping** between an agent's action library and a platform's accepted action vocabulary.
+
+The mapping converts the compositional verification problem into a cross-organizational one. It remains finite, enumerable, and provable.
+
+---
+
+## A14.2 Mapping Function
+
+For each agent action `b_agent ∈ B_agent`:
+
+    f: B_agent → B_platform ∪ {REFUSE}
+
+Requirements:
+
+- No `b_agent` maps to an action outside `B_platform`.
+- No composition in `B_agent` maps to an unsafe composition in `B_platform`.
+- `REFUSE` is always a valid mapping target.
+
+---
+
+## A14.3 Declared Mapping
+
+The mapping is declared in the Agent Certificate (A11) as a table:
+
+| Agent Action | Platform Action | Preconditions Preserved |
+|---|---|---|
+| `query_price` | `get_product` | yes |
+| `add_to_cart` | `cart_add` | yes |
+| `checkout` | `place_order` | yes |
+| `change_payment` | `REFUSE` | — |
+
+Each row is signed. The mapping is versioned with the certificate.
+
+---
+
+## A14.4 Compositional Check
+
+The mapping MUST extend to compositions:
+
+    f*(b₁ ∘ b₂ ∘ … ∘ bₙ) ∈ B_platform*
+
+with the guarantee that no unsafe platform sequence results from a safe agent sequence.
+
+This is the cross-organizational analogue of the Closure Safety Theorem. It is harder but still finite.
+
+---
+
+## A14.5 No Dynamic Discovery
+
+The mapping is declared, signed, versioned. Dynamic discovery at runtime is **non-conformant**. No scraping. No guessing.
+
+---
+
+## A14.6 Refusal
+
+Any action without a mapping entry:
+
+    refuse with code 0x-AMBIG-ACTION
+
+---
+
+## A14.7 Residual
+
+The mapping is a claim, not a proof. The operator asserting the mapping bears liability for its correctness. The verifier's job is to falsify it, not to accept it.
+
+
+
