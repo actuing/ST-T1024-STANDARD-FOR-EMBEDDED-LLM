@@ -1,1 +1,392 @@
 
+
+
+
+
+
+AGENTIC ST-T1024: CONFORMANCE
+
+Normative Conformance Requirements for the Inter-Organizational Layer (A11–A16)
+
+Status: Draft v0.1 — for circulation and critique
+Companion to: AGENTIC ST-T1024: From Certified Agency to Inter-Organizational Admission
+Prerequisites: ST-T1024 core; Agentic extension A0–A10; ACC concrete case
+License: Apache-2.0
+
+---
+
+0. Verification note (read first)
+
+This document is drafted from the inter-organizational paper and the ACC case as provided. It has not been aligned against the A0–A10 source files. Where a conformance clause depends on a definition in A0–A10, the dependency is flagged [ref: Axx]. All such flags must be resolved against source before this document is circulated as normative.
+
+Items marked [BLOCKING] cannot be conformance criteria until an open problem is resolved. A document that asserts conformance to a BLOCKING clause is non-conforming until the block is lifted.
+
+---
+
+1. Scope
+
+This document specifies the conformance requirements for the inter-organizational layer of AGENTIC ST-T1024, comprising six artifacts:
+
+· A11 — Agent Certificate
+· A12 — Intent Envelope
+· A13 — Counterparty Admission Protocol
+· A14 — Action Vocabulary Mapping
+· A15 — Refusal as Wire-Level Protocol
+· A16 — Cross-Organizational Trace Ledger
+
+It does not specify:
+
+· The core ST-T1024 architecture (determinism, ternary logic, FIS triage, FSM scheduling, ROM/SRAM split) — see the core standard.
+· The agentic extension A0–A10 (extended FSM, ROM-burned action library, VERIFY gate, tile invocation protocol, persistent deterministic memory, goal parsing and plan library, bounded task execution, Verifiable Agency Theorem).
+· The ACC concrete case.
+· The trust authority. Conformance to this document does not imply or require any particular trust model. §8 of the inter-organizational paper specifies that the standard defines the format and the verification procedure; the market decides the authority.
+
+---
+
+2. Normative language
+
+This document uses the RFC 2119 keywords:
+
+· MUST — absolute requirement.
+· MUST NOT — absolute prohibition.
+· SHOULD — recommended; deviation requires justification recorded in the audit log.
+· SHOULD NOT — not recommended; adoption requires justification recorded in the audit log.
+· MAY — optional.
+· CONFORMANCE BLOCKING — a clause that cannot yet be assessed because a named open problem is unresolved. An implementation that claims conformance to a BLOCKING clause is non-conforming until the block is lifted.
+
+An implementation conforms to this document iff it satisfies every MUST and MUST NOT clause, and iff it does not claim conformance to any BLOCKING clause whose block is unresolved.
+
+---
+
+3. Conformance levels
+
+Two levels are defined:
+
+Level I — Intra-organizational conformance. The agent's behavior set B is finite and enumerable per the Verifiable Agency Theorem [ref: A0, A10], and the agent operates under the A0–A10 machinery. This level is a prerequisite for Level II. It does not require any artifact from A11–A16.
+
+Level II — Inter-organizational conformance. The agent's operator, the counterparty, and the user each publish the artifacts specified in §4–§9 below. Level II requires Level I.
+
+An implementation MUST declare its conformance level explicitly. An implementation that does not declare a level is non-conforming.
+
+---
+
+4. A11 — Agent Certificate
+
+4.1 Required contents
+
+A conforming Agent Certificate MUST contain:
+
+· (a) B — the verified behavior closure of the agent, per Level I [ref: A10].
+· (b) P — the plan library, with policy declared for each plan (HALT / ROLLBACK / atomic).
+· (c) C — the composition rules, Δt bounds, and window W.
+· (d) The hazard-to-predicate matrix — every declared hazard mapped to a predicate, a window, and a derived threshold.
+· (e) The Environment Assumption Register (EAR), with all three layers declared (§4.4 below).
+· (f) The mode declaration — sovereign or compositional — with the corresponding proof obligation met.
+· (g) The refusal floor ε — the projected asymptotic refusal rate.
+· (h) The ROM hash, the version, and the Friday signature chain.
+
+4.2 Signature chain
+
+The certificate MUST be signed. The signature chain MUST terminate at three named signers per Friday session (see §10). Each signer's role MUST be declared (Author / Verifier / Approver). The Author of a session MUST NOT be the Verifier of the same session. The Verifier of a session MUST NOT be the Approver of the same session. The Approver of a session MUST NOT be the Author of the same session.
+
+4.3 Format
+
+The certificate MUST be in a public, open format. A proprietary certificate format is non-conforming.
+
+The format SHOULD use JSON Schema for structure, CBOR for canonical serialization, and Ed25519 for signatures. Alternative formats MAY be used if they are public and open, and if they support the same semantics.
+
+4.4 EAR layers
+
+The EAR MUST declare three layers:
+
+· Layer 1 — Direct bounds. Per-source error bounds (ε_merchant, ε_payment, ε_inventory, etc.).
+· Layer 2 — Cross-source consistency. Disagreement threshold δ_declared, with the refusal condition declared.
+· Layer 3 — Predictive validity. Horizon and tolerance π, with the divergence condition declared.
+
+Each layer MUST be a monitored assumption, MUST be signed by the Friday board, and MUST have a refusal condition specified.
+
+4.5 Versioning
+
+The certificate MUST be versioned. A certificate MUST be re-evaluated for admission on each Friday burn. A counterparty MAY re-evaluate more frequently.
+
+4.6 Conformance claim
+
+An implementation conforms to A11 iff every clause in §4.1–§4.5 is satisfied. A certificate that omits any of (a)–(h) is non-conforming. A certificate that omits ε is non-conforming.
+
+---
+
+5. A12 — Intent Envelope
+
+5.1 Required contents
+
+A conforming Intent Envelope MUST contain:
+
+· (a) goal — the objective, in machine-readable form.
+· (b) constraints — max price, merchant allowlist, deadline, and any domain-specific constraints.
+· (c) envelope — spend cap and authorized action classes.
+· (d) delegation — agent identifier, expiry, revocation status.
+· (e) revocation endpoint — a reachable URL.
+
+5.2 Delegation semantics
+
+The envelope MUST be signed by the user. The agent MUST NOT hold raw user credentials. Every action taken by the agent MUST be traceable to an envelope clause. An action that is not traceable to an envelope clause MUST produce 0x-AMBIG-INTENT and MUST NOT commit.
+
+5.3 Revocation
+
+The envelope MUST be revocable. The revocation endpoint MUST be reachable for the envelope's declared lifetime. Revocation MUST take effect at the agent's next action, or within a declared maximum revocation latency, whichever is shorter.
+
+5.4 Conformance claim
+
+An implementation conforms to A12 iff every clause in §5.1–§5.3 is satisfied.
+
+---
+
+6. A13 — Counterparty Admission Protocol
+
+6.1 Required contents
+
+A conforming Admission Protocol MUST publish, in machine-readable form:
+
+· (a) The platform's accepted action vocabulary.
+· (b) Published error bounds per API (ε_platform).
+· (c) Rate limits, cost, and latency guarantees.
+· (d) Refusal semantics the platform honors.
+· (e) The platform's own hazard inventory.
+· (f) Settlement guarantees and reversal windows.
+
+6.2 Symmetry
+
+The protocol MUST apply uniformly to all agents that meet its published terms. A protocol that admits some agents and refuses others on terms not published in the protocol is non-conforming.
+
+6.3 Refusal of admission
+
+The agent MUST refuse admission if ε_platform > the agent's declared tolerance. The agent MUST NOT accept admission to a platform whose published bounds exceed its tolerance.
+
+6.4 Inversion
+
+The publication of the protocol MUST be sufficient to make the admission decision auditable. The decision MUST NOT depend on unpublished terms.
+
+6.5 Conformance claim
+
+An implementation conforms to A13 iff every clause in §6.1–§6.4 is satisfied.
+
+---
+
+7. A14 — Action Vocabulary Mapping
+
+7.1 Required artifact
+
+A conforming implementation MUST declare a mapping:
+
+```
+f: B_agent → B_platform ∪ {REFUSE}
+```
+
+signed, versioned, and inspectable.
+
+7.2 Required guarantees
+
+The mapping MUST guarantee:
+
+· (a) No agent action maps outside the platform's accepted vocabulary.
+· (b) No agent composition maps to an unsafe platform composition.
+
+7.3 Compositional verification
+
+Guarantee (b) requires a compositional verification fragment — a decidable subset of system compositions over which the mapping can be proved. The fragment MUST be named.
+
+[BLOCKING — O1] The fragment is not yet named in the inter-organizational paper. Conformance to A14 cannot be assessed until the fragment is specified and its decidability demonstrated.
+
+An implementation MUST NOT claim conformance to A14 while O1 is unresolved.
+
+7.4 No dynamic discovery
+
+The mapping MUST be declared. Dynamic discovery of platform actions at runtime is non-conforming. Runtime scraping is non-conforming.
+
+7.5 Conformance claim
+
+An implementation conforms to A14 iff every clause in §7.1–§7.4 is satisfied and O1 is resolved.
+
+---
+
+8. A15 — Refusal as Wire-Level Protocol
+
+8.1 Required codes
+
+A conforming implementation MUST support the following refusal codes as first-class protocol messages:
+
+· 0x-AMBIG-INTENT — action outside the user's envelope.
+· 0x-AMBIG-GOAL — no plan in P covers this goal.
+· 0x-AMBIG-ACTION — action not in B, or not in the mapping.
+· 0x-AMBIG-STATE — precondition failed on current state.
+· 0x-AMBIG-TRACE — trajectory predicate violated.
+· 0x-AMBIG-EPISTEMIC — EAR assumption violated.
+· 0x-AMBIG-BUDGET — T-AET or spend cap exceeded.
+· 0x-AMBIG-STAFFING — fewer than three qualified signers available (see §10.4).
+
+8.2 Contractual meaning
+
+Each refusal MUST be contractually meaningful. The refusing party MUST bear liability if the refusal is incorrect. An incorrect refusal MUST be treated as a breach.
+
+8.3 Adjudication
+
+The determination of whether a refusal is correct requires an adjudicator.
+
+[BLOCKING — O2] The adjudicator is not specified in the inter-organizational paper. Conformance to A15 cannot be assessed until the adjudicator is named — arbiter, court, mutual third party, or other mechanism.
+
+An implementation MUST NOT claim conformance to A15 while O2 is unresolved.
+
+8.4 Non-gameability
+
+The protocol MUST be non-gameable. A protocol in which the refusing party can escape liability by refusing without justification is non-conforming. A protocol in which the refused party can escape liability by inducing a refusal without cause is non-conforming.
+
+8.5 Conformance claim
+
+An implementation conforms to A15 iff every clause in §8.1–§8.4 is satisfied and O2 is resolved.
+
+---
+
+9. A16 — Cross-Organizational Trace Ledger
+
+9.1 Required contents
+
+A conforming ledger MUST record, for every action:
+
+· (a) The action, its precondition hash, its outcome, and its signature.
+· (b) Every refusal, with reason code.
+· (c) Every EAR check — observed vs. declared bound.
+· (d) Every envelope clause exercised.
+
+9.2 Structural requirements
+
+The ledger MUST be append-only. The ledger MUST be hash-chained. The ledger MUST be Merkle-anchored. The ledger MUST be independently verifiable. Both parties MUST hold a copy.
+
+9.3 Dispute resolution
+
+Disputes MUST resolve against the ledger. A ledger that does not support independent verification is non-conforming. A ledger that permits retroactive modification is non-conforming.
+
+9.4 Retention
+
+The ledger MUST be retained for a declared period, sufficient for the applicable regulatory and liability horizon. The period MUST be declared in the certificate.
+
+9.5 Conformance claim
+
+An implementation conforms to A16 iff every clause in §9.1–§9.4 is satisfied.
+
+---
+
+10. The trust root
+
+10.1 Three roles
+
+The Friday session requires three roles:
+
+· Author — proposes the delta.
+· Verifier — independently checks the contracts, runs the simulation phase, attempts to falsify the change, signs the verification report.
+· Approver — owns the ROM-burn signature, owns the liability, holds veto.
+
+10.2 Non-interchangeability
+
+The roles MUST NOT be interchangeable within a session. A session in which one person holds two roles is non-conforming.
+
+10.3 Liability
+
+The three signers MUST bear liability jointly and severally under a strict-liability regime. A regime in which liability diffuses to "the company" is non-conforming. A regime in which liability attaches only to the Approver is non-conforming.
+
+10.4 Under-three case
+
+If three qualified, independent signers are not available, the session MUST NOT occur. The system MUST remain at its current B*. The refusal code 0x-AMBIG-STAFFING MUST be emitted. A system that continues to burn ROM updates without three signers is non-conforming.
+
+10.5 Veto
+
+The Approver's veto MUST be recorded with a written justification entering the audit log. A veto without a record is non-conforming.
+
+10.6 What this document cannot specify
+
+This document MUST NOT attempt to specify judgment. No clause can require that the Verifier actually attempts falsification, that the Approver actually understands the change, or that the three disagree when they should. This is the boundary of what a standard can do.
+
+---
+
+11. Conformance claim format
+
+An implementation claiming conformance MUST publish a conformance statement containing:
+
+· The conformance level claimed (I or II).
+· For Level II: the certificate identifier, the version, the ROM hash, and the signature chain.
+· A list of the A11–A16 clauses claimed, with evidence for each.
+· A declaration of the BLOCKING clauses not claimed (O1, O2) and the reason.
+· The date of the statement and the version of this document against which conformance is claimed.
+
+A conformance statement that does not declare BLOCKING clauses is non-conforming.
+
+---
+
+12. What conformance does NOT mean
+
+Conformance to this document does not mean:
+
+· That the agent is safe. It means the agent's behavior is bounded and the inter-organizational protocol is satisfied.
+· That the trust model is sound. §8 of the inter-organizational paper leaves the trust authority to the market.
+· That all hazards are covered. Coverage is with respect to the declared hazard inventory.
+· That refusal is impossible. ε > 0 in open environments.
+· That liability is resolved. Liability is traceable via the ledger; its legal enforcement is a matter for the applicable jurisdiction.
+· That the platform will admit the agent. Admission is the platform's decision, made under its published protocol.
+
+Conformance is a technical claim about artifacts and protocols. It is not a commercial, legal, or political claim.
+
+---
+
+13. Versioning
+
+This document is versioned. A conformance statement MUST declare the version against which conformance is claimed. A change to a MUST clause invalidates prior conformance claims until re-assessed.
+
+The Friday burn updates the certificate, not this document. This document is updated on a separate cadence, by the same three-role process specified in §10.
+
+---
+
+14. Open problems (restated)
+
+# Problem Blocks
+O1 Compositional verification fragment for A14 A14 conformance
+O2 Adjudicator for A15 refusal correctness A15 conformance
+O3 Trust root scale beyond single organization adoption, not conformance
+O4 EAR bootstrapping in commerce T4 timing bound
+O5 Non-stationary tracking bound for T5 ε derivation
+
+O1 and O2 are CONFORMANCE BLOCKING. O3, O4, and O5 are documented residuals. An implementation MUST declare which residuals it accepts.
+
+---
+
+15. Summary table
+
+Artifact Conformance requires Blocking?
+A11 — Certificate Contents (a)–(h); signature chain; open format; EAR; versioning No
+A12 — Envelope Contents (a)–(e); user signature; traceability; revocation No
+A13 — Admission Protocol Contents (a)–(f); symmetry; inversion; auditable terms No
+A14 — Mapping Declared f; guarantees (a)–(b); no dynamic discovery O1
+A15 — Refusal Codes; contractual meaning; non-gameability O2
+A16 — Ledger Contents (a)–(d); append-only; hash-chained; Merkle-anchored No
+
+---
+
+16. Closing note
+
+This document specifies what an implementation MUST do to claim conformance to the inter-organizational layer of AGENTIC ST-T1024.
+
+It names what it cannot yet certify: O1 and O2 are CONFORMANCE BLOCKING. An implementation that claims conformance to A14 or A15 while these blocks are unresolved is non-conforming, and this document says so explicitly. A standard that pretends otherwise is the one to distrust.
+
+Two artifacts remain to be drafted before this document can be circulated as normative:
+
+1. The Agent Certificate schema, as a standalone artifact. This is the most concrete deliverable and the one a counterparty reads first.
+2. The compositional verification fragment named in O1. Without it, A14 conformance is undefined.
+
+Until both exist, this document is v0.1 — a proposal about a proposal about a standard.
+
+End of draft.
+
+---
+
+License: Apache-2.0. Free for all. Forever.
+
+
+
