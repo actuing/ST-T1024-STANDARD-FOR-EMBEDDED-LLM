@@ -1,1 +1,79 @@
 
+
+
+# AGENTIC ST-T1024 — A12: INTENT ENVELOPE
+
+**Status:** Draft
+**Depends on:** A0–A10, A11
+**Applies to:** User delegation to an agent
+
+---
+
+## A12.1 Purpose
+
+A12 defines the **machine-readable, user-signed delegation** by which a user authorizes an agent to act on their behalf.
+
+The envelope is the user's sovereignty made explicit and verifiable at the API boundary.
+
+---
+
+## A12.2 Structure
+
+```json
+{
+  "goal": "buy <item class>",
+  "constraints": {
+    "max_price": 200.00,
+    "currency": "USD",
+    "merchant_allowlist": ["amazon.com", "walmart.com"],
+    "deadline": "2026-10-01T00:00:00Z"
+  },
+  "envelope": {
+    "spend_cap": 500.00,
+    "action_classes_authorized": ["query", "add_to_cart", "checkout"],
+    "action_classes_forbidden": ["change_payment_method", "change_shipping_address"]
+  },
+  "delegation": {
+    "agent_id": "...",
+    "expiry": "2026-10-01T00:00:00Z",
+    "revocable": true
+  },
+  "revocation_endpoint": "https://...",
+  "signature": "..."
+}
+
+
+
+
+
+
+12.3 Requirements
+
+· The envelope MUST be signed by the user.
+· The agent MUST hold a scoped, revocable token derived from the envelope. Never raw credentials.
+· Every action MUST be traceable to an envelope clause.
+· Revocation MUST be honored within a declared interval.
+
+---
+
+A12.4 Refusal Conditions
+
+Any action not traceable to an envelope clause:
+
+Any action in action_classes_forbidden:
+
+Any action exceeding spend_cap:
+
+---
+
+A12.5 Relation to A11
+
+The envelope is presented alongside the Agent Certificate. The certificate declares what the agent can do; the envelope declares what the user has authorized. Both must be satisfied for an action to commit.
+
+---
+
+A12.6 Residual
+
+The envelope binds the agent, not the counterparty. A counterparty may still refuse an authorized action. The envelope establishes user intent; it does not establish counterparty consent. See A13.
+
+```
