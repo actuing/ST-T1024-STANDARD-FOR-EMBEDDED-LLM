@@ -77,6 +77,14 @@ Critical metric MUTEX-blocked thread transition time MUTEX-blocked thread transi
 Method Priority-based scheduling Undisclosed (proprietary)
 Significance Bounded real-time response Truly deterministic real-time response
 
+RTX-1
+https://acrobat.adobe.com/id/urn:aaid:sc:EU:dba8c432-d28f-4552-bb36-4b31159dbc38
+
+
+RTX-2
+https://acrobat.adobe.com/id/urn:aaid:sc:EU:f1eb5ade-39cb-4eaf-8767-d97a628f9ac1
+
+
 RTX-2 proved that:
 
 · Thread-count-independent timing is achievable on commercial hardware.
@@ -188,6 +196,10 @@ Any government, any engineer, any nation can audit, implement, and own this stan
 3. VenturCom RTX Real-Time Extensions for Windows NT (1990s). Historical documentation.
 4. IntervalZero RTX-2 Architecture Overview (proprietary, limited public disclosure).
 5. New Civilization Blueprint. https://github.com/actuing/NEW-CIVILIZATION-BLUEPRINT-
+6. RTX-1 & RTX-2
+https://acrobat.adobe.com/id/urn:aaid:sc:EU:6ea7fe21-642c-4c2d-8c66-49a47d8aa2ab
+https://acrobat.adobe.com/id/urn:aaid:sc:EU:f1eb5ade-39cb-4eaf-8767-d97a628f9ac1
+
 
 ---
 
