@@ -1,1 +1,79 @@
 
+
+
+
+
+AGENTIC ST-T1024. A15: REFUSAL AS WIRE PROTOCOL.md
+
+```markdown
+# AGENTIC ST-T1024 — A15: REFUSAL AS WIRE PROTOCOL
+
+**Status:** Draft
+**Depends on:** A0–A14
+**Applies to:** Cross-organizational communication
+
+---
+
+## A15.1 Purpose
+
+A15 elevates `0x-AMBIG` from an internal state to a **first-class protocol message**. Refusal becomes a contractually meaningful event, auditable by both parties and adjudicable by third parties.
+
+---
+
+## A15.2 Standard Codes
+
+| Code | Meaning | Originating Layer |
+|---|---|---|
+| `0x-AMBIG-INTENT` | Action outside user's envelope | A12 |
+| `0x-AMBIG-GOAL` | No plan in P covers this goal | A0–A10 |
+| `0x-AMBIG-ACTION` | Action not in B, or not in mapping | A11, A14 |
+| `0x-AMBIG-STATE` | Precondition failed on current state | A0–A10 |
+| `0x-AMBIG-TRACE` | Trajectory predicate violated | A0–A10 |
+| `0x-AMBIG-EPISTEMIC` | EAR assumption violated | A0–A10 |
+| `0x-AMBIG-BUDGET` | T-AET or spend cap exceeded | A0–A10, A12 |
+| `0x-ADMISSION-*` | Admission refusal | A13 |
+
+---
+
+## A15.3 Wire Format
+
+A refusal message MUST contain:
+
+- The code
+- The originating layer
+- The context hash (precondition, envelope clause, or predicate ID)
+- A signature from the refusing party
+- A timestamp
+
+---
+
+## A15.4 Liability
+
+Refusal transfers liability to the refusing party **only if the refusal was correct**.
+
+An incorrect refusal is itself a breach. This is what makes refusal non-gameable.
+
+---
+
+## A15.5 Logging
+
+Every refusal MUST be entered into the trace ledger (A16).
+
+---
+
+## A15.6 Relation to A0–A10
+
+Within a single organization, refusal is an internal state. Across organizations, it must be communicated. A15 is the bridge.
+
+---
+
+## A15.7 Residual
+
+Determining whether a refusal was "correct" is a factual question, not a protocol question. The protocol supplies the evidence; the adjudicator supplies the judgment.
+```
+
+
+
+
+
+
