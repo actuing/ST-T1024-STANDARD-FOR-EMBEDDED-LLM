@@ -1,1 +1,81 @@
 
+
+
+
+# AGENTIC ST-T1024 — A16: CROSS-ORGANIZATIONAL TRACE LEDGER
+
+**Status:** Draft
+**Depends on:** A0–A15
+**Applies to:** Audit, dispute resolution, liability attribution
+
+---
+
+## A16.1 Purpose
+
+A16 defines the **append-only, independently verifiable ledger** that records every action, refusal, and assumption-check across organizational boundaries.
+
+The ledger is the artifact that courts, regulators, and insurers read.
+
+---
+
+## A16.2 Contents
+
+Each entry records:
+
+| Field | Description |
+|---|---|
+| `entry_id` | Sequential identifier |
+| `timestamp` | ISO 8601 UTC |
+| `party` | Originating organization |
+| `event_type` | `action`, `refusal`, `ear_check`, `envelope_check` |
+| `payload` | Event-specific data |
+| `payload_hash` | SHA-256 of payload |
+| `prev_hash` | Hash of previous entry |
+| `signature` | Signing party |
+
+---
+
+## A16.3 Chaining
+
+Entries are hash-chained (Merkle). Any modification to a past entry invalidates all subsequent hashes. Tampering is detectable without trusting any party.
+
+---
+
+## A16.4 Distribution
+
+Both parties MUST hold a copy. Optionally, a third party MAY be designated as a neutral anchor.
+
+---
+
+## A16.5 Verification
+
+A verifier MUST be able to:
+
+1. Confirm the hash chain from genesis to head.
+2. Confirm every entry's signature.
+3. Reconstruct the sequence of actions, refusals, and checks.
+4. Correlate entries with the Agent Certificate (A11) and Intent Envelope (A12).
+
+---
+
+## A16.6 Uses
+
+- **Audit:** third-party review of agent behavior.
+- **Dispute resolution:** factual record for adjudication.
+- **Liability attribution:** trace actions to signers.
+- **Compliance:** evidence for regulatory review.
+
+---
+
+## A16.7 Retention
+
+The ledger MUST be retained for the duration declared in the counterparty agreement, or for the statutory minimum, whichever is longer.
+
+---
+
+## A16.8 Residual
+
+The ledger records what happened, not why. It does not adjudicate. It does not interpret. It supplies evidence; the parties supply meaning.
+
+
+
