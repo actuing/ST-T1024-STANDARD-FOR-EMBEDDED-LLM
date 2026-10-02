@@ -1,1 +1,516 @@
 
+
+
+
+ST-T1024
+
+A Deterministic Standard for Embedded Language Models
+
+White Paper V2 — Architecture, Knowledge, Agency, and Residuals
+
+Author: M. Taalabi
+Correspondence: actu.ing@gmail.com
+License: Apache-2.0
+Date: October 2026
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+
+---
+
+0. THE DEFINITION
+
+INTELLIGENCE : NOT ACTING FROM A DISTORTED PERCEPTION
+
+THE EGO : FEAR, DESIRE
+
+Most definitions of intelligence are positive — the ability to solve problems, achieve goals, adapt. This one is negative. It locates the failure mode instead of the capacity:
+
+The obstacle is not lack of power. The obstacle is distortion.
+
+Fear distorts perception by making threats visible where none exist. Desire distorts perception by making what you want seem true. Both are preference overriding observation. That is the mechanism.
+
+Everything in this white paper is derived from this definition. The four walls the AI narrative collided with are four faces of one failure: preference overriding observation. The architecture is an attempt to build a system that does not act from distorted perception — at the level of its own operation.
+
+What the architecture can do: refuse when observation is absent. Bound its behavior to a finite, ROM-burned action space. Make every decision auditable.
+
+What it cannot do: make the humans perceive clearly. That is the residual, and it is named.
+
+---
+
+1. THE PROBLEM
+
+1.1 The four walls
+
+The AI narrative collided with four physical constraints that no rebranding could rename away:
+
+Wall Preference Observation filtered out
+Energy Desire for scale The meter
+Water The same desire The draw
+Hallucination Desire for fluency (in the loss) Truth
+Liability Fear of responsibility Uncertainty
+
+Data centre electricity consumption is projected to double by 2030; water usage set to rise by 50%. Global data centres consumed ~448 TWh of electricity and 222 billion litres of water in 2025. The hallucination wall is the definition in machine terms: the loss function rewards fluency, not truth, so the system produces plausible text regardless of truth. RLHF and DPO can reinforce this when preference judgments reward confidence over correctness.
+
+1.2 The open loop
+
+A closed-loop system measures its output and corrects. An open-loop system acts without feedback. The difference is not intelligence — it is whether the system can find out it's wrong.
+
+Three sensors matter: expert advice, oversight, and career staff. Remove any one, and the controller is issuing commands into a void. The September 2026 sequence — rebrand "AI" to "Superintelligence" on Tuesday, announce a 120-day autonomous weapons project on Thursday — is a classic open-loop signature. The two commands don't interact because nothing in the system checks for consistency.
+
+1.3 The structural gap
+
+In September 2026, Amazon blocked Meta's Muse agent from its platform. The block is not a commercial spat. It is a structural refusal, made possible because no portable, machine-verifiable artifact exists by which one organization can assess another's agent before granting admission.
+
+Three incompatible claims collide: the user's claim to delegate to an agent of their choosing; the agent operator's claim to act at scale; the platform's claim to control access to its customers. Each is legitimate. None can be exercised without infringing the others.
+
+The gap is not technical. It is specification.
+
+---
+
+2. ARCHITECTURE OVERVIEW
+
+ST-T1024 is a deterministic inference architecture for embedded and edge hardware. Its defining commitments:
+
+2.1 Determinism by construction. Temperature fixed at 0.0. Same input, same state, same output, bit-identical. Simulation equals benchmarking.
+
+2.2 FIS triage. Inputs routed to exactly one domain tile by a fuzzy inference system with ROM-burned membership functions and rule base.
+
+2.3 FSM scheduling. Execution under a finite state machine with a declared Assured Execution Time (AET).
+
+2.4 Ternary logic. Values in {−1, 0, +1}. XNOR + popcount arithmetic. No floating-point multipliers in the hot path.
+
+2.5 Tile independence. Tiles share no knowledge by reference. Shared facts are duplicated in each tile, independently signed and attested.
+
+2.6 Refusal as first-class output. 0x-AMBIG is not an error condition. It is the safety state.
+
+2.7 Rate-graded knowledge. ROM holds the invariant substrate; SRAM holds the certified revisable layer. The boundary is rate of change.
+
+2.8 Open knowledge base. Additions and rectifications arrive continuously, signed, versioned, attributable, revocable, deprecatable.
+
+The core claim: the system's behavior is deterministic, finite, and enumerable — regardless of the internal character of the underlying model.
+
+---
+
+3. DETERMINISM BY CONSTRUCTION
+
+3.1 The six-step pipeline
+
+```
+input
+→ harvest (normalize; deterministic; no allocation)
+→ FIS triage (route to exactly one tile)
+→ FSM schedule (bounded cycle counter)
+→ tile execute (ternary matcher; fixed function)
+→ render (human-readable sentence; deterministic)
+→ power down (0 V idle)
+```
+
+Every stage is a function. Same input, same output, always. There is no sampler anywhere.
+
+3.2 FIS triage is deterministic
+
+A Fuzzy Inference System has four stages, each a fixed computation:
+
+1. Fuzzification — membership functions are ROM-burned. Given x, μ_A(x) is fixed.
+2. Rule evaluation — rule base is ROM-burned. Fixed T-norm. Bounded rule count.
+3. Aggregation — fixed S-norm.
+4. Defuzzification — fixed method (Sugeno with singleton consequents and weighted average).
+
+No sampling. No runtime learning. No randomness.
+
+The condition that matters: the arithmetic must be exact. Integer or ternary, not floating-point. Float determinism is platform-dependent: ARM FPU ≠ RISC-V F/D ≠ soft-float. The same query would route to different tiles on different hardware. ST-T1024 uses integer or ternary arithmetic, so the FIS is bit-identical across platforms.
+
+3.3 Ternary logic
+
+Dual-plane encoding: each trit is two bits, (pos, neg).
+
+pos neg value
+0 0 0
+1 0 +1
+0 1 −1
+1 1 invalid — fail-closed
+
+Dot product via popcount:
+
+```c
+acc += popcount(ap & bp);   // (+1)*(+1) = +1
+acc += popcount(an & bn);   // (-1)*(-1) = +1
+acc -= popcount(ap & bn);   // (+1)*(-1) = -1
+acc -= popcount(an & bp);   // (-1)*(+1) = -1
+```
+
+No floating-point. No multipliers in the hot loop. On a Cortex-M7 at 200 MHz, a 256-trit dot product completes in ~180 cycles.
+
+---
+
+4. TILE INDEPENDENCE
+
+4.1 The expert systems lesson
+
+Early expert systems — MYCIN, DENDRAL, XCON — separated the inference engine from the knowledge base. Correct design. But they collapsed under the knowledge acquisition bottleneck: rules proliferated, interactions multiplied, verification couldn't keep pace. The knowledge base became a liability.
+
+The failure mode was combinatorial interaction in a shared rule space. Rule A and rule B produced behavior neither author predicted. Add rule C, and the interaction surface triples.
+
+4.2 How ST-T1024 prevents it
+
+Tiles are independent by construction.
+
+· Only one tile is powered on at a time.
+· Tiles share no knowledge by reference.
+· Facts common to multiple tiles are duplicated in each, independently signed and attested.
+· Adding tile N+1 touches nothing in tiles 1…N.
+
+This is the share-nothing architecture applied to knowledge. Same pattern as microservices with duplicated data instead of a shared database.
+
+The consequence: the expert systems failure mode is architecturally impossible. Tile count is not a constraint. The system scales to arbitrary tile count.
+
+4.3 Consistency of duplicated facts
+
+Duplication introduces consistency as the new problem. If "conservation of energy" is in tiles 1, 7, and 43, and the country authority revises it, all three copies must update.
+
+The mechanism:
+
+· Every shared fact carries a canonical hash.
+· The country authority issues the canonical version.
+· Every tile containing that fact carries the same hash.
+· The audit ledger verifies cross-tile consistency at every Friday session.
+· Divergence → refusal (0x-AMBIG-CONSISTENCY).
+
+This is independence with consistency, enforced by signing and audit.
+
+---
+
+5. AET — ASSURED EXECUTION TIME
+
+5.1 The derivation
+
+AET is derivable from architectural constants, not asserted.
+
+Tile independence bounds execution to a single tile (or a bounded call-graph depth if A6 control-flow invocation is used). There is no cross-tile interaction of facts.
+
+FIS triage is deterministic — a fixed computation over ROM-burned rules. T_triage is a declared constant.
+
+Therefore:
+
+AET_total = T_triage + max over tiles of T_tile
+
+If A6 control-flow invocation is used with ROM-burned call graph depth D:
+
+AET_total ≤ D × T_tile_max + T_triage
+
+Either way, both terms are architectural constants. Both are verifiable pre-deployment.
+
+5.2 Why this matters for certification
+
+A stochastic system cannot have AET, because its worst case is "the model generated tokens until it stopped." There is no bound by construction.
+
+Tile independence is what gives you a bound. The FSM is the enforcement mechanism; independence is what makes the enforcement meaningful.
+
+Each tile is certified once. Composition is multiplication by a declared constant. This is what makes ASIL-D, SIL, and DO-178C certification tractable.
+
+5.3 The architectural constant
+
+WCET_CYCLES = 800 is the architectural budget.
+
+Clock WCET AET (measured 680 cycles)
+1 GHz (silicon) 800 ns 680 ns
+480 MHz (Cortex-M7) 1.67 µs 1.42 µs
+200 MHz (typical MCU) 4.0 µs 3.4 µs
+100 MHz (minimum) 8.0 µs 6.8 µs
+
+The architecture is unchanged. Only the wall-clock number moves. Every timing claim is stated in cycles first.
+
+5.4 Why caches and RTOS break WCET
+
+D-cache hit/miss timing depends on access history, which depends on input, which varies. WCET analysis with caches is an open research problem. Disable D-cache or use TCM exclusively. This is not optional.
+
+A tick-based RTOS cannot schedule at sub-microsecond granularity. A 1 ms tick is 1,250× the 800-cycle budget at 1 GHz. For certified use, bare metal only.
+
+---
+
+6. THE KNOWLEDGE LAYER
+
+6.1 The boundary is rate of change
+
+Layer Content Revision cadence Storage
+Invariant substrate Universal constants (c, h, e, G, k_B, N_A), conservation laws, field equations (Maxwell, Einstein, Schrödinger), thermodynamics, mathematical truths, declared environment parameters (g = 9.8) Centuries ROM
+Certified revisable Domain standards (IEEE, WHO/NEJM, legal gazettes), empirical parameters, regional regulations Years to months SRAM
+Live Prices, news, transient facts Hours to days Fetched or refused
+Unprovenanced Anything without a certified source — 0x-AMBIG
+
+ROM is not immutable truth. ROM is the invariant substrate — attested at manufacture, sealed at burn, supersedable by a new burn. The deployment declares its environment: g = 9.8 is Earth-specific; a Mars deployment burns a different baseline.
+
+6.2 Certified sources
+
+Each tile is populated from certified sources:
+
+· Physics ← IEEE, APS, professional bodies
+· Medicine ← WHO, NEJM, The Lancet
+· Law ← official gazettes
+· Engineering ← ISO, IEC, SAE
+
+The source is named, the attestation is signed, the revision history is versioned.
+
+6.3 Country authority attestation
+
+The ROM and SRAM are signed by the country authority. The signing chain terminates at a named, accountable institution. Joint and several liability attaches to the named signers.
+
+6.4 Science advances through errors
+
+Certified sources are sometimes wrong. That is not a defect of the standard — it is the epistemology the standard must match. Therefore:
+
+· Every entry carries its attestation history, not just its current content.
+· Deprecation is a signed operation. Retracted facts receive a signed deprecation. The tile refuses to act on deprecated facts until corrected attestation arrives.
+· Revision rate is a health metric. A tile that never revises is a tile that is not being maintained.
+· Every ROM entry points to its SRAM correction path.
+
+The machine can register errors. It cannot generate corrections. The new hypothesis is the human move.
+
+6.5 The knowledge base is open
+
+Additions and rectifications arrive continuously. Every entry is signed, versioned, attributable, revocable, deprecatable. The machine registers, versions, refuses, and logs. The machine does not generate, judge, or decide. That is the human trust root.
+
+6.6 The refusal log is the sensor
+
+When the system returns 0x-AMBIG, that is a tile telling the operator: here is a gap, a contradiction, or an expired attestation. The refusal log is the demand signal that feeds the update protocol.
+
+---
+
+7. THE UPDATE PROTOCOL
+
+Three clocks. One discipline.
+
+7.1 Friday session — weekly
+
+New facts enter the SRAM layer. Each addition or rectification is:
+
+· Proposed by an Author
+· Verified by a Verifier
+· Approved by an Approver
+
+Three distinct roles. Joint and several liability. Veto requires written justification that enters the audit log. If three qualified signers are not available, the session does not occur — 0x-AMBIG-STAFFING.
+
+7.2 Triennial clustering — every three years
+
+Aggregated refusal logs from certified deployments (order of trillions of queries) are deterministically clustered to find:
+
+· New tiles — domains the current structure doesn't cover
+· Split tiles — domains that have grown too broad
+· Merged tiles — domains that have converged
+
+Deterministic constraints:
+
+· Fixed initial centroids (not random)
+· Exact integer or ternary arithmetic
+· Bounded iteration
+· No random sampling
+· Hash-committed corpus before clustering
+
+The proposed structure is signed by the country authority and supersedes the previous ROM burn. The old burn is deprecated, not erased.
+
+7.3 Emergency tiles — on discontinuity
+
+When a query pattern emerges that no existing tile covers, an emergency tile may be created by a named authority.
+
+Properties:
+
+· Declared scope, signed and bounded
+· Fast revision clock (weekly or on-demand)
+· Refusal as default under source disagreement
+· Mandatory sunset date
+· Graduation to permanent requires explicit attestation; default is expiry
+· Does not override existing tiles
+· Same FSM, ROM/SRAM split, refusal semantics, audit ledger
+
+The COVID case:
+
+· January 2020: Emergency tile created. No certified sources. Tile refuses everything.
+· March 2020: Sources contradict each other. Layer 2 of the EAR refuses. Contradiction logged.
+· June 2020: Certified knowledge emerges. Tile answers within scope, refuses outside it.
+· 2023: PHEIC declared over. Tile expires (default) or graduates (explicit attestation).
+
+---
+
+8. THE AGENTIC EXTENSION A0–A10
+
+8.1 Verifiable Agency Theorem
+
+Given:
+
+· (i) a finite action library A = {a₁ … aₙ}, ROM-burned
+· (ii) a finite plan library P = {p₁ … pₘ}, ROM-burned
+· (iii) an FSM with bounded transition function and bounded T-AET
+· (iv) formal preconditions and postconditions for every action
+
+Then: the complete behavior set B = {all action sequences the agent can produce} is finite, enumerable, and exhaustively verifiable before deployment.
+
+8.2 Mechanisms
+
+ID Mechanism
+A1 Extended FSM: GOAL_PARSE → PLAN → DECOMPOSE → [TRIAGE → SCHEDULE → EXECUTE → VERIFY] → COMMIT → POWER_DOWN
+A2 ROM-burned action library: each action carries id, type, preconditions, effects, envelope, cost, signature
+A5 VERIFY gate: every action passes preconditions, envelope, and no-higher-safety-alternative before commit
+A6 Tile invocation protocol: ROM-burned call graph, fixed depth, context-hashed. Control flow only — not knowledge sharing.
+A7 Persistent deterministic memory: append-only lifetime log of every action, precondition hash, outcome, signature
+A8 Goal parsing and plan library: finite ROM-burned plan library. No match → 0x-AMBIG-GOAL
+A9 Bounded task execution: T-AET bounds plan execution. Budget exceeded → 0x-BUDGET-EXCEEDED
+A10 Verifiable Agency Theorem (above)
+
+The consequence: the system cannot act outside B. This is what makes certification possible.
+
+8.3 The ACC concrete case
+
+The Adaptive Cruise Control case instantiates the extension in ASIL-D.
+
+· State: five fields (speed_kph, distance_to_lead_m, brake_wear_mm, driver_alert, last_action)
+· Actions: six (A_COAST, A_BRAKE_LIGHT, A_BRAKE_MEDIUM, A_BRAKE_HARD, A_ALERT_DRIVER, A_HANDOFF)
+· Plans: three (PLAN_CRUISE_MAINTAIN, PLAN_FOLLOW_ADAPT, PLAN_EMERGENCY_STOP)
+· Trajectory predicates: three, window W=8
+
+The decisive demonstration — Query 4: emergency braking when brake pads are at 5.8 mm. A_BRAKE_HARD passes its own envelope. Preconditions pass. Invariants pass. The sequence violates tp_brake_wear_bounded, and the system refuses.
+
+No per-action contract can see this hazard. It lives in the trace. This is the case that justifies the trajectory layer.
+
+---
+
+9. THE INTER-ORGANIZATIONAL LAYER A11–A16
+
+ID Addition
+A11 Agent Certificate — signed, versioned artifact containing B, P, composition rules, hazard matrix, EAR, refusal floor ε, ROM hash, signature chain
+A12 Intent Envelope — user-signed, scoped, revocable delegation token. Every action traceable to an envelope clause
+A13 Counterparty Admission Protocol — platform publishes its own machine-readable contract
+A14 Action Vocabulary Mapping — provable mapping f: B_agent → B_platform ∪ {REFUSE}, declared, signed, versioned
+A15 Refusal as Wire Protocol — standardized codes: 0x-AMBIG-INTENT, -GOAL, -ACTION, -STATE, -TRACE, -EPISTEMIC, -BUDGET, -STAFFING, -CONSISTENCY
+A16 Cross-Organizational Trace Ledger — append-only, hash-chained, Merkle-anchored, independently verifiable
+
+With these, the Amazon–Meta conflict becomes decidable — not resolved, but conducted through evidence rather than assertion.
+
+---
+
+10. THE CONVERGENCE OF ε
+
+10.1 The theorem
+
+Under monotone closure growth (B_{t+1} ⊇ B_t), refusal rate r(t) is non-increasing and converges to ε ≥ 0.
+
+The proof is elementary. The triviality is the point: convergence is a consequence of monotonicity. The architecture's obligation is to guarantee monotonicity — which is what the Friday protocol, the signed burn, and the refusal log provide.
+
+10.2 The nonzero floor
+
+In any open environment, ε > 0. Reasons:
+
+1. Irreducible novelty: E is not finite; B* is finite
+2. Adversarial inputs: can generate cases outside B* by construction
+3. Unbounded tail: for any finite B, μ(E \ B) > 0
+
+The floor is the safety margin. A system that drives ε → 0 has either closed the environment, expanded B* past verification tractability, or begun accepting unsafe actions. Each is a failure mode.
+
+10.3 Corollaries
+
+· The shape of r(t) is a health metric (exponential = healthy; power-law = honest but expensive; plateau = restructure needed; oscillation = unstable protocol; growth = losing)
+· The refusal log is the estimator. No separate instrumentation required.
+· ε is a contract term, published in the Agent Certificate, negotiated in the Admission Protocol.
+
+---
+
+11. WHAT THE STANDARD SOLVES
+
+Challenge How ST-T1024 addresses it
+Energy Ternary logic eliminates FP multipliers. Power gating drops idle tiles to 0 V. WCET bounds prevent runaway
+Water Local inference at µW–mW envelopes: no datacenter, no cooling tower, no aquifer draw
+Hallucination No open-ended generation. Triages, answers within a tile, or refuses. Structurally impossible in the basic path
+Liability Every action traces to a tile, a triage decision, an immutable entry, a named signer. "The model decided" is not available
+Inter-org admission A11–A16 supply the portable, machine-verifiable layer
+Knowledge acquisition Rate-graded substrate, certified sources, country authority attestation, three update clocks, refusal log as closed-loop feedback
+Scalability Tile independence is architectural. Expert systems' combinatorial failure mode is impossible. System scales to arbitrary tile count
+
+---
+
+12. WHAT REMAINS
+
+12.1 The trust root. The three Friday engineers and the country authority are the unverified anchors. Every formal system requires one. The obligation is to name it, staff it, and hold it accountable.
+
+12.2 Capture of the country authority. If the authority is captured, the signature is valid and the content is bent. Auditable distortion wears the uniform of legitimacy. Structural risk. Named, not eliminated.
+
+12.3 Cross-border sovereign mapping. US-certified tiles meeting EU-certified tiles. A13 must answer, or the standard creates the moat it was built to prevent.
+
+12.4 Adversarial drift. If the environment drifts faster than the update cadence tracks, convergence becomes tracking. The design obligation is measurable: the cadence must exceed the drift rate.
+
+12.5 Multi-agent convergence. When certified agents interact through a shared environment, does the joint refusal rate converge, or can agents drive each other upward? Open problem.
+
+12.6 Silicon validation. Energy numbers to date come from emulation. FPGA → hybrid → ASIC path exists. 180nm node is sufficient. Unbuilt.
+
+12.7 Signer throughput. Every tile gets attested by the country authority. Every shared fact gets signed in every tile that contains it. The signing cadence must match the update cadence. A nation-state can do it. A small deployment cannot.
+
+12.8 Triage routing at scale. With N tiles, routing must still find the right one. At 10^9 tiles, a flat table is 4 GB. Solvable via hierarchical triage, but a real design problem.
+
+12.9 Consistency of duplicated facts. Canonical hashes enforced by the country authority's signing regime and the audit ledger. Divergence → refusal. The residual is signer throughput.
+
+12.10 Gaming of the refusal log. Signed submissions mitigate; they do not eliminate. An adversary with a certified deployment can inject refusals designed to skew the triennial clustering.
+
+12.11 The refusal floor ε. Derivable, not asserted. The floor is the safety margin, not a defect. ε is a contract term.
+
+---
+
+13. THE REFERENCE IMPLEMENTATION
+
+The repository contains:
+
+· ST-T1024 emulator — Python reference for pre-silicon validation
+· First Artifact — single-tile, 32-command slice on host and MCU
+· MCU Implementation Guide — v2.0, ARM and RISC-V, with WCET analysis, memory layout, validation tests
+· ACC concrete case — full agentic extension in a safety-critical domain
+· TLA+ specifications — for the FSM scheduler, tile isolation, cycle budget, timeout semantics
+· Agentic extension A0–A16 — spec + concrete case
+
+What the reference implementation is not: the full standard. It is a demonstration of the shape. The MCU guide says so explicitly: "This one proves the shape."
+
+What the standard is not (yet): adopted by a standards body. It lives on GitHub and Zenodo. Adoption is the reader's decision.
+
+---
+
+14. CONCLUSION
+
+The transformer was built to guess a sentence. The industry scaled it into a cosmology, hit four physical walls, renamed the walls, renamed the system, and handed the system a uniform.
+
+The walls are one wall. Distortion: preference overriding observation. Fear and desire bending perception. The definition from 1987, stated in machine terms.
+
+ST-T1024 is not a better narrative. It is a different building.
+
+It solves energy, water, hallucination, and liability by architecture. It supplies a portable, machine-verifiable language for inter-organizational admission. It derives its refusal floor from first principles. It governs — does not solve — knowledge acquisition, with a rate-graded substrate, signed attestation, three update clocks, and a refusal log that closes the loop. It scales to arbitrary tile count because tile independence is architectural, not conventional.
+
+It names its residuals: the human trust root, capture of the authority, cross-border mapping, adversarial drift, multi-agent convergence, silicon validation, signer throughput, and the consistency of duplicated facts.
+
+A standard that names its residuals is one that can be trusted. A standard that hides them is one that cannot.
+
+The work is not complete. But the architecture is coherent, the theorem is clean, the first domain is demonstrated, and the standard is proposed.
+
+---
+
+INTELLIGENCE : NOT ACTING FROM A DISTORTED PERCEPTION
+
+THE EGO : FEAR, DESIRE
+
+---
+
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+License: Apache-2.0. Free for all. Forever.
+
+Companion papers: "The Foolish Narrative of AI, 2015–2026" and "THE OPEN LOOP: A Pamphlet on Perception, Feedback, and the Word 'Superintelligence.'"
+
+---
+
+What's new in this white paper, compared to the published Paper 2:
+
+· §4 — Tile Independence. Full derivation of why the expert systems failure mode is architecturally impossible. Share-nothing architecture applied to knowledge. Duplication + canonical hash + audit ledger for consistency.
+· §5 — AET. Full derivation from architectural constants. Tile independence bounds execution; FIS determinism bounds triage; therefore AET = T_triage + T_tile_max. ASIL-D certification tractability.
+· §6 — Knowledge Layer. Rate-of-change boundary. Certified sources. Country authority attestation. Science-advances-through-errors handled via signed deprecation, revision-rate-as-health-metric, and open knowledge base.
+· §7 — Update Protocol. Three clocks: Friday (weekly), Triennial (structural), Emergency (discontinuity). COVID case worked through.
+· §12 — Residuals. Expanded to include signer throughput, triage routing at scale, and consistency of duplicated facts. §12.8 and §12.9 replace the earlier "discipline holds at scale" residual, which was wrong — the architecture does hold at scale.
+
+The published Paper 2 stands. This white paper is the consolidation — the version that incorporates everything the thread derived. The reader who read Paper 2 can derive the rest. The reader who wants the whole argument in one document has this.
+
+
+
+
+
+
