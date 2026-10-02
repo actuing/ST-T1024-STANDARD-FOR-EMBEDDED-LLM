@@ -507,7 +507,15 @@ What's new in this white paper, compared to the published Paper 2:
 · §7 — Update Protocol. Three clocks: Friday (weekly), Triennial (structural), Emergency (discontinuity). COVID case worked through.
 · §12 — Residuals. Expanded to include signer throughput, triage routing at scale, and consistency of duplicated facts. §12.8 and §12.9 replace the earlier "discipline holds at scale" residual, which was wrong — the architecture does hold at scale.
 
-The published Paper 2 stands. This white paper is the consolidation — the version that incorporates everything the thread derived. The reader who read Paper 2 can derive the rest. The reader who wants the whole argument in one document has this.
+
+
+
+The published Paper 2 stands. 
+https://zenodo.org/records/23102533
+
+
+
+This white paper is the consolidation — the version that incorporates everything the thread derived. The reader who read Paper 2 can derive the rest. The reader who wants the whole argument in one document has this.
 
 
 
