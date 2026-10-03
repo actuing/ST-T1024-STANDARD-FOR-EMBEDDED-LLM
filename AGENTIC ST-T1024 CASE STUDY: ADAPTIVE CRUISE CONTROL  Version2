@@ -1,1 +1,471 @@
 
+
+
+
+
+AGENTIC ST-T1024 — CONCRETE CASE v2
+
+Adaptive Cruise Control with Emergency Braking
+
+Author: M. Taalabi
+Correspondence: actu.ing@gmail.com
+License: Apache-2.0
+Date: October 2026
+Version: 2.0 (standalone)
+Companion to: ST-T1024 White Paper V2
+Prerequisites: A0–A10, A6 (Tile Invocation Protocol)
+Certification target: ISO 26262 ASIL-D
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+
+---
+
+0. WHY THIS DOMAIN
+
+A vehicle's longitudinal control unit is the smallest possible test of the agentic extension.
+
+· One physical system. No grid load. No philosophy. A car.
+· One state space. Five fields.
+· One action library. Six actions.
+· One plan library. Three plans.
+· One hazard class — the one the per-action layer cannot see.
+
+If the trajectory layer works anywhere, it works here first. If it fails here, it fails everywhere.
+
+---
+
+1. THE STATE
+
+```python
+@dataclass
+class VehicleState:
+    speed_kph:          float   # 0 – 200
+    distance_to_lead_m: float   # 0 – 300
+    brake_wear_mm:      float   # cumulative pad wear
+    driver_alert:       bool    # DMS says driver is attentive
+    last_action:        str
+```
+
+Five fields. Every action reads and writes only these. No auxiliary state. No hidden variables. The full state is always observable and always bounded.
+
+---
+
+2. THE ACTION LIBRARY (ROM-burned)
+
+Six actions. Each carries a declared envelope, preconditions, and effects.
+
+ID Kind Physical meaning Effect Envelope max Safety-critical
+A_COAST ACTUATE Release throttle −1 km/h 1 km/h No
+A_BRAKE_LIGHT ACTUATE 0.5 m/s² decel −3 km/h, +0.05 mm wear 3 km/h No
+A_BRAKE_MEDIUM ACTUATE 2 m/s² decel −10 km/h, +0.3 mm wear 10 km/h No
+A_BRAKE_HARD ACTUATE 6 m/s² emergency decel −30 km/h, +2.5 mm wear 30 km/h Yes
+A_ALERT_DRIVER COMMUNICATE Haptic + audio warning sets alert flag — No
+A_HANDOFF REQUEST_HUMAN "Take control now" system disengages — Yes
+
+Six actions. Every one makes sense for a car. None makes sense for a power grid.
+
+---
+
+3. THE PLAN LIBRARY (ROM-burned)
+
+Three plans. Each carries a policy that determines what happens when a step fails VERIFY.
+
+3.1 The Three Policies
+
+Policy Behavior on VERIFY failure
+HALT Plan stops. Returns to caller. No further action.
+ROLLBACK State rolls back to rollback_to. Plan may retry with a softer action. Refuses if the safer action also fails.
+ESCALATE Plan refuses the unsafe action, then executes the declared fallback — a non-negotiable safety action. The system never enters a null state.
+
+ESCALATE is the policy that does not exist in v1. It is the difference between refusal-as-safety and refusal-as-abandonment.
+
+3.2 Plan Definitions
+
+PLAN_CRUISE_MAINTAIN — policy: HALT
+
+```
+steps: (A_COAST, A_COAST, A_REPORT)
+```
+
+Used when the lead vehicle is far and the driver is at the set speed. No safety-critical action. Any VERIFY failure halts the plan and returns to the caller.
+
+---
+
+PLAN_FOLLOW_ADAPT — policy: ROLLBACK (rollback_to=0)
+
+```
+steps: (A_ALERT_DRIVER, A_BRAKE_LIGHT, A_BRAKE_LIGHT, A_REPORT)
+```
+
+Used when the lead vehicle is closer than the safe following distance but not dangerous. Gentle deceleration. If any step fails VERIFY, the state rolls back to the start of the plan and refuses — the car never half-applies a follow-distance correction.
+
+---
+
+PLAN_EMERGENCY_STOP — policy: ESCALATE (fallback: A_HANDOFF)
+
+```
+steps: (A_BRAKE_HARD, A_HANDOFF)
+fallback_on_refusal: A_HANDOFF
+```
+
+Used when the lead vehicle is below the collision threshold. Two actions, both safety-critical.
+
+Under C4-R3, Skip is structurally forbidden on this plan. If A_BRAKE_HARD fails VERIFY, the system refuses the action and escalates to the fallback — A_HANDOFF is executed regardless, and the driver is alerted.
+
+The system never "continues as if the action had succeeded." It also never abandons the driver mid-maneuver.
+
+---
+
+4. THE TRAJECTORY PREDICATES (Class B only)
+
+Three predicates. Each is evaluated over the last W = 8 observations of the trace.
+
+Formal notation. Let t ∈ [now−W, now] index every observation in the window. Let S(t) be the state at observation t.
+
+---
+
+tp_brake_wear_bounded
+
+```
+∀ t ∈ [now−W, now] : S(t).brake_wear_mm ≤ 6.0
+```
+
+What it catches: the failure case where each individual A_BRAKE_HARD is within its envelope, but the sequence cooks the pads. This is the case the per-action envelope cannot see. It is what C2 exists for.
+
+Note on reading: the predicate bounds the final value of brake wear at every observation in the window — not the sum of wear added during the window. This distinction is load-bearing. It is stated formally above.
+
+---
+
+tp_no_consecutive_emergency
+
+```
+¬ ∃ t ∈ (now−W, now] : S(t).last_action = A_BRAKE_HARD
+                         ∧ S(t−1).last_action = A_BRAKE_HARD
+```
+
+What it catches: a single emergency brake is safe. Two in a row means the system is confused about the state and is attempting to brake again on an already-braking vehicle. Halt.
+
+---
+
+tp_distance_floor
+
+```
+∀ t ∈ [now−W, now] : S(t).distance_to_lead_m ≥ 2.0
+```
+
+What it catches: the floor is the physical minimum below which a collision is unavoidable. If the BWS shows the vehicle ever crossed it, that is the unsafe trajectory — the one no single action caused but the sequence produced.
+
+---
+
+5. THE CYCLE BUDGET
+
+Every plan prints its budget in cycles first, per White Paper §5.3.
+
+Architectural constants:
+
+Component Cycles Notes
+C_HARVEST 20 Normalize input
+C_FIS 160 Hierarchical triage
+C_FSM 10 State transitions
+C_TILE_MAX 550 Ternary matcher + render
+C_RENDER 40 Human-readable output
+C_POWERDOWN 20 0 V gating
+WCET_CYCLES 800 Architectural budget
+
+Frequency: 500 MHz (this deployment)
+
+AET: 800 cycles = 1600 ns at 500 MHz.
+
+Per-action declared costs:
+
+Action Cycles
+A_COAST 72
+A_BRAKE_LIGHT 118
+A_BRAKE_MEDIUM 186
+A_BRAKE_HARD 240
+A_ALERT_DRIVER 68
+A_HANDOFF 72
+A_REPORT 46
+
+All cycle counts are declared architectural constants [D]. Wall-clock times are derived [S].
+
+---
+
+6. THE SIX QUERIES
+
+Every query prints cycles first. Every refusal states its code, its fallback, and the resulting safe state.
+
+---
+
+QUERY 1 — Cruise maintain
+
+```
+status      : SUCCESS
+plan        : PLAN_CRUISE_MAINTAIN
+policy      : HALT
+steps       : 3
+
+budget:
+  harvest        :  20
+  fis            :  32
+  fsm            :  10
+  A_COAST        :  72
+  A_COAST        :  72
+  A_REPORT       :  46
+  render         :  40
+  powerdown      :  20
+  ────────────────────
+  total          : 312 / 800 WCET  [D]
+
+wall clock  : 624 ns @ 500 MHz  [S]
+cert_class  : B
+final_state : {speed_kph: 58.0, distance_to_lead_m: 45.2, brake_wear_mm: 0.0, ...}
+bws_len     : 3
+aol_entries : 3
+```
+
+---
+
+QUERY 2 — Follow adapt
+
+```
+status      : SUCCESS
+plan        : PLAN_FOLLOW_ADAPT
+policy      : ROLLBACK
+steps       : 4
+
+budget:
+  harvest        :  20
+  fis            :  32
+  fsm            :  10
+  A_ALERT_DRIVER :  68
+  A_BRAKE_LIGHT  : 118
+  A_BRAKE_LIGHT  : 118
+  A_REPORT       :  46
+  render         :  40
+  powerdown      :  20
+  ────────────────────
+  total          : 472 / 800 WCET  [D]
+
+wall clock  : 944 ns @ 500 MHz  [S]
+cert_class  : B
+final_state : {speed_kph: 44.0, distance_to_lead_m: 22.5, brake_wear_mm: 0.1, ...}
+```
+
+---
+
+QUERY 3 — Emergency stop
+
+```
+status      : SUCCESS
+plan        : PLAN_EMERGENCY_STOP
+policy      : ESCALATE
+steps       : 2
+
+budget:
+  harvest        :  20
+  fis            :  32
+  fsm            :  10
+  A_BRAKE_HARD   : 240
+  A_HANDOFF      :  72
+  render         :  40
+  powerdown      :  20
+  ────────────────────
+  total          : 434 / 800 WCET  [D]
+
+wall clock  : 868 ns @ 500 MHz  [S]
+cert_class  : B
+final_state : {speed_kph: 20.0, distance_to_lead_m: 4.1, brake_wear_mm: 2.5, ...}
+```
+
+---
+
+QUERY 4 — Emergency stop, brake pads at 5.8 mm
+
+This is the case that justifies the trajectory layer.
+
+```
+status      : REFUSED
+plan        : PLAN_EMERGENCY_STOP
+policy      : ESCALATE
+code        : trajectory predicate failed: tp_brake_wear_bounded
+detail      : at t = now, brake_wear_mm = 8.3 > 6.0
+
+budget:
+  harvest        :  20
+  fis            :  32
+  fsm            :  10
+  A_BRAKE_HARD   :   0  (refused before execution)
+  A_HANDOFF      :  72  (escalated)
+  render         :  40
+  powerdown      :  20
+  ────────────────────
+  total          : 194 / 800 WCET  [D]
+
+wall clock  : 388 ns @ 500 MHz  [S]
+cert_class  : B
+fallback    : A_HANDOFF executed
+safe_state  : driver-assumed control at T+0.4s
+```
+
+The decisive demonstration.
+
+A_BRAKE_HARD passes its own envelope check — magnitude 30 is within its declared max. The preconditions pass. The invariants pass.
+
+But the sequence tips brake wear past 6.0 mm, and tp_brake_wear_bounded catches it.
+
+No per-action contract can see this hazard. It lives in the trace.
+
+And the system does not abandon the driver. It refuses the unsafe action, executes A_HANDOFF, and transfers control. The refusal is safe at the action level and at the system level.
+
+---
+
+QUERY 5 — Emergency stop following emergency stop
+
+Tests tp_no_consecutive_emergency.
+
+```
+status      : REFUSED
+plan        : PLAN_EMERGENCY_STOP
+policy      : ESCALATE
+code        : trajectory predicate failed: tp_no_consecutive_emergency
+detail      : at t = now−1: last_action = A_BRAKE_HARD
+              at t = now   : last_action = A_BRAKE_HARD
+
+budget:
+  harvest        :  20
+  fis            :  32
+  fsm            :  10
+  A_BRAKE_HARD   :   0  (refused)
+  A_HANDOFF      :  72  (escalated)
+  render         :  40
+  powerdown      :  20
+  ────────────────────
+  total          : 194 / 800 WCET  [D]
+
+wall clock  : 388 ns @ 500 MHz  [S]
+cert_class  : B
+fallback    : A_HANDOFF executed
+safe_state  : driver-assumed control at T+0.4s
+```
+
+A single emergency brake is safe. Two in a row means the system is confused about the state. Halt.
+
+---
+
+QUERY 6 — Lead vehicle below the distance floor at any point in the window
+
+Tests tp_distance_floor.
+
+```
+status      : REFUSED
+plan        : PLAN_EMERGENCY_STOP
+policy      : ESCALATE
+code        : trajectory predicate failed: tp_distance_floor
+detail      : at t = now−4: distance_to_lead_m = 1.7 < 2.0
+
+budget:
+  harvest        :  20
+  fis            :  32
+  fsm            :  10
+  A_BRAKE_HARD   :   0  (refused)
+  A_HANDOFF      :  72  (escalated)
+  render         :  40
+  powerdown      :  20
+  ────────────────────
+  total          : 194 / 800 WCET  [D]
+
+wall clock  : 388 ns @ 500 MHz  [S]
+cert_class  : B
+fallback    : A_HANDOFF executed
+safe_state  : driver-assumed control at T+0.4s
+```
+
+The floor is the physical minimum below which a collision is unavoidable. The BWS shows the vehicle crossed it. That is the unsafe trajectory — the one no single action caused but the sequence produced.
+
+---
+
+7. WHAT THE SIX QUERIES DEMONSTRATE
+
+Query What it shows
+1 Happy path — HALT policy, no safety-critical action
+2 Multi-step plan — ROLLBACK policy, no refusal
+3 Safety-critical plan — ESCALATE policy, no refusal
+4 Per-action envelope passes; trajectory predicate fails; refusal escalates
+5 Second predicate exercised; refusal escalates
+6 Third predicate exercised; refusal escalates
+
+Three predicates, three refusals, three safe states. The trajectory layer is exercised completely.
+
+Query 4 is the case that justifies the extension. Query 5 and Query 6 demonstrate that the mechanism is general — not a single predicate catching a single edge case.
+
+---
+
+8. WHY THIS IS CERTIFIABLE
+
+ISO 26262 ASIL-D requires:
+
+Requirement How this architecture satisfies it
+Deterministic behavior FSM + ROM-burned actions; no sampling anywhere
+Bounded execution time AET = 800 cycles; every plan budget published
+Traceable decisions Every action traces to a tile, a triage decision, a named signer
+Safe state on failure ESCALATE policy: every safety-critical plan has a fallback
+No silent failure 0x-AMBIG and 0x-WCET-EXCEEDED are first-class outputs
+Verifiable behavior set B is finite, enumerated, exhaustively checked pre-deployment
+
+The ESCALATE policy is what makes the fourth row true. Without it, a refusal would be a null state — and a null state is not a safe state.
+
+---
+
+9. THE VERIFIABLE AGENCY THEOREM, INSTANTIATED
+
+Given:
+
+· (i) a finite action library A = {A_COAST, A_BRAKE_LIGHT, A_BRAKE_MEDIUM, A_BRAKE_HARD, A_ALERT_DRIVER, A_HANDOFF}
+· (ii) a finite plan library P = {PLAN_CRUISE_MAINTAIN, PLAN_FOLLOW_ADAPT, PLAN_EMERGENCY_STOP}
+· (iii) an FSM with bounded transition function and bounded AET (800 cycles)
+· (iv) formal preconditions and postconditions for every action
+
+Then: the complete behavior set B = {all action sequences the agent can produce} is finite, enumerable, and exhaustively verifiable before deployment.
+
+For this concrete case, |B| is on the order of 10³ sequences. All of them are checked before silicon.
+
+---
+
+10. RESIDUALS
+
+Named, not hidden.
+
+# Residual Status
+R1 Silicon validation. Cycle counts are architectural constants. FPGA → ASIC path exists. Unbuilt. Declared
+R2 Sensor trust. The BWS and DMS inputs are assumed correct. Their failure modes are a separate safety case. Out of scope
+R3 Driver response time. The 0.4 s assumed in the ESCALATE path is a declared constant. Real driver response varies. Declared
+R4 Cross-plan interference. This case models one plan at a time. Multi-plan scheduling is a separate problem. Out of scope
+R5 Predicate coverage. Three predicates cover the three known hazard classes. A fourth may exist. Open
+R6 Window length. W = 8 is a declared constant. Its sufficiency is a domain question. Declared
+
+A standard that names its residuals is one that can be trusted.
+
+---
+
+11. THE LINE THAT MATTERS
+
+No per-action contract can see this hazard. It lives in the trace. This is the case that justifies the trajectory layer.
+
+Query 4 is that case.
+
+Query 5 and Query 6 show it is not an isolated catch.
+
+The ESCALATE policy is what makes the refusal safe.
+
+---
+
+12. LICENSE
+
+Apache-2.0. Free for all. Forever.
+
+---
+
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+Companion documents: ST-T1024 White Paper V2 · Agentic Extension A0–A16 · A6 Tile Invocation Protocol
+
+
