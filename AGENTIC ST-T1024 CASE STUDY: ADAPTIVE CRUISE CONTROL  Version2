@@ -3,6 +3,97 @@
 
 
 
+
+
+
+
+
+
+
+1. INTRODUCTION
+
+1.1 What V1 Established
+
+The first version of this case demonstrated one thing and demonstrated it correctly: the trajectory layer catches a hazard the per-action layer cannot see.
+
+Query 4 — emergency braking with brake pads already at 5.8 mm — showed that A_BRAKE_HARD passes its own envelope check, passes its preconditions, passes its invariants, and still produces an unsafe sequence. The predicate tp_brake_wear_bounded caught it. No per-action contract could have.
+
+That insight is the reason the A0–A16 extension exists. It stands.
+
+1.2 The Pitfalls of V1
+
+V1 had five defects. Four were labeling and precision. One was safety-critical.
+
+Pitfall 1 — Refusal without escalation.
+
+The plan policy for PLAN_EMERGENCY_STOP was HALT. When A_BRAKE_HARD failed VERIFY, the plan stopped. A_HANDOFF — the driver alert — never executed.
+
+A vehicle closing on a lead vehicle, with worn pads, that refuses to brake and does not hand off is more dangerous than one that brakes with worn pads. The refusal was safe at the action level and unsafe at the system level. This is the defect that matters.
+
+Pitfall 2 — Units were unlabeled.
+
+Cycle counts and nanosecond values were printed without naming the frequency or the WCET denominator. A 1236 ns figure appeared to exceed an 800 ns AET when it was 618 cycles under an 800-cycle budget at 500 MHz. The architecture was consistent. The presentation was not.
+
+Pitfall 3 — The cycle budget was not published.
+
+Four queries printed four totals. Per-step costs were inconsistent across plans and unexplained. Without a breakdown — harvest, FIS, FSM, action, render, powerdown — the totals were assertions, not derivations.
+
+Pitfall 4 — The predicate definition was ambiguous.
+
+tp_brake_wear_bounded was described as "cumulative brake wear across the window ≤ 6.0 mm." This reads as the sum of wear added during the window. The example assumed the final wear value at each observation.
+
+Under the first reading, Query 4 passes and the refusal is wrong. Under the second, it fails and the refusal is correct. An implementer working from the prose would build the wrong predicate.
+
+Pitfall 5 — Two of three predicates were untested.
+
+tp_no_consecutive_emergency and tp_distance_floor were defined and never exercised. A predicate that has never fired is a predicate that has never been shown to work.
+
+1.3 What V2 Adds
+
+Addendum 1 — The ESCALATE policy.
+
+A third plan policy, alongside HALT and ROLLBACK. When a safety-critical action fails VERIFY, ESCALATE refuses the action and executes the declared fallback. PLAN_EMERGENCY_STOP now escalates to A_HANDOFF on any refusal.
+
+The system never enters a null state. Refusal is safe at both levels.
+
+Addendum 2 — Cycles first, frequency named.
+
+Every plan prints its budget in cycles with the WCET denominator. Every wall-clock value names its frequency. AET is stated in cycles. The nanoseconds are derived.
+
+Addendum 3 — Full budget breakdown per query.
+
+Each query decomposes into harvest, FIS, FSM, action costs, render, and powerdown. The totals sum. The reader can verify the arithmetic.
+
+Addendum 4 — Formal predicate notation.
+
+Every predicate is stated with explicit quantifiers:
+
+```
+∀ t ∈ [now−W, now] : S(t).brake_wear_mm ≤ 6.0
+```
+
+The ambiguity is closed.
+
+Addendum 5 — Six queries, three predicates, three refusals.
+
+Query 4 exercises tp_brake_wear_bounded. Query 5 exercises tp_no_consecutive_emergency. Query 6 exercises tp_distance_floor. Every predicate fires. Every refusal escalates. Every escalation reaches a declared safe state.
+
+1.4 What V2 Does Not Change
+
+The state space. The action library. The plan library. The trajectory window (W = 8). The predicates themselves.
+
+The architecture was correct. V2 fixes the delivery: one policy, one notation, and the tests that were missing.
+
+---
+
+The insight that justified the extension is in Query 4. The demonstration that the mechanism is general is in Queries 5 and 6. The proof that refusal is safe is in the ESCALATE policy.
+
+
+_____________________________________
+
+
+
+
 AGENTIC ST-T1024 — CONCRETE CASE v2
 
 Adaptive Cruise Control with Emergency Braking
