@@ -1,1 +1,551 @@
 
+
+
+
+
+#!/usr/bin/env python3
+"""
+ST-T1024 GLOBAL REFERENCE EMULATOR
+====================================
+Single-file deterministic inference emulator.
+Companion to: ST-T1024 White Paper V2 (October 2026)
+
+WHAT THIS EMULATOR VERIFIES
+  [V1] Tile independence  : each tile holds its OWN ROM instance
+  [V2] Determinism        : SHA-256 tiebreak; no Python hash randomization
+  [V3] Ternary arithmetic : XNOR + popcount; no `*` in the hot path
+  [V4] Refusal semantics  : 0x-AMBIG as a first-class output
+  [V5] WCET branch        : reachable (proven by injected-overrun test)
+  [V6] Budget integrity   : declared components sum exactly to WCET
+
+NOT VERIFIED (declared residuals — see §12 of the White Paper)
+  - Silicon energy        : emulation constants only
+  - Signer throughput     : not simulated
+  - Multi-agent dynamics  : not simulated
+  - Cross-border mapping  : not simulated
+
+LABELS USED THROUGHOUT
+  [D] derived   from architectural constants
+  [S] simulated declared constant, not measured
+  [M] measured  Python overhead, NOT hardware
+
+License: Apache-2.0
+"""
+
+from dataclasses import dataclass, field
+from typing import List, Dict, Tuple, Optional
+from enum import Enum, auto
+import hashlib
+
+# ─────────────────────────────────────────────────────────────
+# 1. ARCHITECTURE CONSTANTS                            [D]
+# ─────────────────────────────────────────────────────────────
+
+class Arch:
+    FREQ_HZ         = 500_000_000
+    WCET_CYCLES     = 800
+
+    # Cycle budget, cycles-first (per White Paper §5.3)
+    C_HARVEST       = 20
+    C_FIS           = 160
+    C_FSM           = 10
+    C_TILE_MAX      = 550
+    C_RENDER        = 40
+    C_POWERDOWN     = 20
+
+    # Ternary packing
+    TRITS_PER_WORD  = 64
+
+    # Energy model constants                             [S]
+    PJ_PER_ACTIVE   = 0.5     # pJ per active cycle, declared for target node
+    PJ_PER_IDLE     = 0.001   # pJ per idle tile per cycle (leakage)
+
+    @classmethod
+    def budget_sum(cls) -> int:
+        return (cls.C_HARVEST + cls.C_FIS + cls.C_FSM +
+                cls.C_TILE_MAX + cls.C_RENDER + cls.C_POWERDOWN)
+
+    @classmethod
+    def cycles_to_ns(cls, c: int) -> float:
+        return c * 1e9 / cls.FREQ_HZ
+
+
+assert Arch.budget_sum() == Arch.WCET_CYCLES, (
+    f"FATAL: budget {Arch.budget_sum()} ≠ WCET {Arch.WCET_CYCLES}"
+)
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. TERNARY PRIMITIVES                                [D]
+# ─────────────────────────────────────────────────────────────
+
+def pack_trits(trits: List[int]) -> Tuple[List[int], List[int]]:
+    """Pack {-1,0,+1} trits into (positive, negative) bit planes."""
+    pos_words, neg_words = [], []
+    for w in range(0, len(trits), Arch.TRITS_PER_WORD):
+        chunk = trits[w:w + Arch.TRITS_PER_WORD]
+        pos = neg = 0
+        for i, t in enumerate(chunk):
+            if   t ==  1: pos |= (1 << i)
+            elif t == -1: neg |= (1 << i)
+        pos_words.append(pos)
+        neg_words.append(neg)
+    return pos_words, neg_words
+
+
+def popcount(x: int) -> int:
+    return bin(x).count('1')
+
+
+def ternary_dot_packed(ap: List[int], an: List[int],
+                       bp: List[int], bn: List[int]) -> int:
+    """XNOR + popcount. No multipliers anywhere."""
+    acc = 0
+    for i in range(len(ap)):
+        acc += popcount(ap[i] & bp[i])   # (+1)(+1) = +1
+        acc += popcount(an[i] & bn[i])   # (-1)(-1) = +1
+        acc -= popcount(ap[i] & bn[i])   # (+1)(-1) = -1
+        acc -= popcount(an[i] & bp[i])   # (-1)(+1) = -1
+    return acc
+
+
+# ─────────────────────────────────────────────────────────────
+# 3. ROM (per-tile, duplicated)                        [V1]
+# ─────────────────────────────────────────────────────────────
+
+class BrutalFactsROM:
+    """Each tile instantiates its OWN ROM. No shared references."""
+
+    def __init__(self, domain: str, facts: Dict[str, str]):
+        self.domain         = domain
+        self.facts          = dict(facts)          # copy, not reference
+        self.canonical_hash = self._hash()
+
+    def _hash(self) -> str:
+        payload = repr(sorted(self.facts.items())).encode('utf-8')
+        return hashlib.sha256(payload).hexdigest()[:16]
+
+    def read(self, key: str) -> Optional[str]:
+        return self.facts.get(key)
+
+
+# ─────────────────────────────────────────────────────────────
+# 4. FIS ROUTING (hierarchical, ternary)               [V2]
+# ─────────────────────────────────────────────────────────────
+
+class TernaryFIS:
+    """Hierarchical ternary FIS.
+
+    Level 1: super-domain selection.
+    Level 2: sub-tile selection within selected super-domain.
+    Deterministic tiebreak via SHA-256.
+    """
+
+    CYCLES_PER_EVAL = 8   # declared [S]
+
+    def __init__(self, tiles: List['DomainTile']):
+        # Group tiles by first keyword as a coarse super-domain
+        self.groups: Dict[str, List[int]] = {}
+        for i, t in enumerate(tiles):
+            super_key = t.keywords[0] if t.keywords else "_"
+            self.groups.setdefault(super_key, []).append(i)
+        self.tiles = tiles
+
+    def _score(self, q: str, idx: int) -> int:
+        kws = self.tiles[idx].keywords
+        if not kws:
+            return 0
+        hits = sum(1 for kw in kws if kw in q)
+        net  = hits - (len(kws) - hits)
+        return (net > 0) - (net < 0)      # clamp to {-1, 0, +1}
+
+    def _tiebreak(self, q: str, candidates: List[int]) -> int:
+        if len(candidates) == 1:
+            return candidates[0]
+        payload = (q + "|" + ",".join(map(str, candidates))).encode()
+        digest  = int(hashlib.sha256(payload).hexdigest(), 16)
+        return candidates[digest % len(candidates)]
+
+    def route(self, query: str) -> Tuple[Optional[int], int]:
+        """Return (tile_idx or None, cycles_used)."""
+        q = query.lower()
+        cycles = 0
+
+        # Level 1 — super-domain
+        best_super, best_score = None, -999
+        for super_key, idxs in self.groups.items():
+            if super_key in q:
+                score = 1
+            else:
+                score = 0
+            cycles += self.CYCLES_PER_EVAL
+            if score > best_score:
+                best_score = score
+                best_super = super_key
+
+        if best_super is None or best_score <= 0:
+            return None, cycles
+
+        # Level 2 — sub-tile within the selected super-domain
+        candidates = self.groups[best_super]
+        scores     = [(i, self._score(q, i)) for i in candidates]
+        cycles    += len(candidates) * self.CYCLES_PER_EVAL
+
+        best = max(s for _, s in scores)
+        if best <= 0:
+            return None, cycles
+
+        ties = [i for i, s in scores if s == best]
+        return self._tiebreak(q, ties), cycles
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. FSM                                               [D]
+# ─────────────────────────────────────────────────────────────
+
+class State(Enum):
+    IDLE      = auto()
+    HARVEST   = auto()
+    TRIAGE    = auto()
+    SCHEDULE  = auto()
+    EXECUTE   = auto()
+    RENDER    = auto()
+    POWERDOWN = auto()
+    REFUSE    = auto()
+
+
+class SchedulerFSM:
+    LEGAL = {
+        State.IDLE:      {State.HARVEST},
+        State.HARVEST:   {State.TRIAGE},
+        State.TRIAGE:    {State.SCHEDULE, State.REFUSE},
+        State.SCHEDULE:  {State.EXECUTE},
+        State.EXECUTE:   {State.RENDER, State.REFUSE},
+        State.RENDER:    {State.POWERDOWN},
+        State.REFUSE:    {State.POWERDOWN},
+        State.POWERDOWN: {State.IDLE},
+    }
+
+    def __init__(self):
+        self.state = State.IDLE
+        self.transitions = 0
+
+    def to(self, target: State) -> None:
+        if target not in self.LEGAL[self.state]:
+            raise RuntimeError(
+                f"Illegal transition {self.state.name} → {target.name}"
+            )
+        self.state = target
+        self.transitions += 1
+
+
+# ─────────────────────────────────────────────────────────────
+# 6. TILE                                              [V3]
+# ─────────────────────────────────────────────────────────────
+
+class DomainTile:
+    """One independent tile. Own ROM. Own ternary engine."""
+
+    LAYER_CYCLES = 60   # declared cost per ternary layer   [S]
+
+    def __init__(self, tile_id: int, domain: str,
+                 keywords: List[str], facts: Dict[str, str]):
+        self.tile_id  = tile_id
+        self.domain   = domain
+        self.keywords = keywords
+        self.rom      = BrutalFactsROM(domain, facts)   # own instance
+
+    def _encode(self, tokens: List[str], q: str) -> List[int]:
+        return [1 if tok in q else -1 for tok in tokens]
+
+    def execute(self, query_lower: str) -> Tuple[Optional[str], int]:
+        """Return (fact or None, cycles_used)."""
+        best_key, best_score = None, 0
+        for key, text in self.rom.facts.items():
+            k_trits = self._encode(key.lower().split(), query_lower)
+            t_trits = self._encode(text.lower().split()[:16], query_lower)
+            n = min(len(k_trits), len(t_trits))
+            if n == 0:
+                continue
+            ap, an = pack_trits(k_trits[:n])
+            bp, bn = pack_trits(t_trits[:n])
+            score  = ternary_dot_packed(ap, an, bp, bn)
+            if score > best_score:
+                best_score, best_key = score, key
+
+        cycles = max(1, len(self.rom.facts)) * self.LAYER_CYCLES
+        if best_key is None or best_score <= 0:
+            return None, cycles
+        return self.rom.facts[best_key], cycles
+
+
+# ─────────────────────────────────────────────────────────────
+# 7. TRACE                                             [D]
+# ─────────────────────────────────────────────────────────────
+
+@dataclass
+class Trace:
+    query:        str
+    status:       str
+    tile_id:      Optional[int]  = None
+    cycles:       Dict[str, int] = field(default_factory=dict)
+    total_cycles: int            = 0
+    energy_pj:    float          = 0.0
+    output:       Optional[str]  = None
+    refusal_code: Optional[str]  = None
+    fsm_states:   int            = 0
+
+    def report(self) -> str:
+        lines = [
+            f"  query      : {self.query!r}",
+            f"  status     : {self.status}",
+            f"  tile       : {self.tile_id}",
+            f"  cycles     : {self.total_cycles} / {Arch.WCET_CYCLES}  [D]",
+            f"  wall clock : {Arch.cycles_to_ns(self.total_cycles):6.1f} ns"
+            f"  @ {Arch.FREQ_HZ/1e6:.0f} MHz",
+            f"  energy     : {self.energy_pj:8.2f} pJ  [S]",
+            f"  fsm steps  : {self.fsm_states}",
+        ]
+        if self.refusal_code:
+            lines.append(f"  refusal    : {self.refusal_code}")
+        if self.output:
+            lines.append(f"  output     : {self.output[:72]}")
+        lines.append("  budget     : " + "  ".join(
+            f"{k}={v}" for k, v in self.cycles.items()
+        ))
+        return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────
+# 8. SYSTEM
+# ─────────────────────────────────────────────────────────────
+
+class ST1024:
+    def __init__(self, tiles: List[DomainTile]):
+        self.tiles = tiles
+        self.n     = len(tiles)
+        self.fsm   = SchedulerFSM()
+        self.fis   = TernaryFIS(tiles)
+
+    # ---- energy model (declared) ----------------------------
+    def _energy(self, total_cycles: int) -> float:
+        active = total_cycles * Arch.PJ_PER_ACTIVE
+        idle   = (self.n - 1) * total_cycles * Arch.PJ_PER_IDLE
+        return active + idle
+
+    # ---- pipeline -------------------------------------------
+    def process(self, query: str,
+                _inject_overrun: int = 0) -> Trace:
+        tr = Trace(query=query, status="OK")
+        self.fsm.state = State.IDLE
+
+        # 1 — HARVEST
+        self.fsm.to(State.HARVEST)
+        tr.cycles['harvest'] = Arch.C_HARVEST
+
+        # 2 — TRIAGE
+        self.fsm.to(State.TRIAGE)
+        tile_idx, fis_cycles = self.fis.route(query)
+        tr.cycles['fis'] = min(fis_cycles, Arch.C_FIS)
+
+        if tile_idx is None:
+            return self._refuse(tr, "0x-AMBIG", State.REFUSE)
+
+        # 3 — SCHEDULE
+        self.fsm.to(State.SCHEDULE)
+        tr.cycles['fsm'] = Arch.C_FSM
+
+        # 4 — EXECUTE
+        self.fsm.to(State.EXECUTE)
+        fact, tile_cycles = self.tiles[tile_idx].execute(query.lower())
+        tile_cycles += _inject_overrun
+        tr.cycles['tile'] = tile_cycles
+
+        if tile_cycles > Arch.C_TILE_MAX:
+            return self._refuse(tr, "0x-WCET-EXCEEDED", State.REFUSE)
+
+        if fact is None:
+            return self._refuse(tr, "0x-AMBIG-DOMAIN", State.REFUSE)
+
+        # 5 — RENDER
+        self.fsm.to(State.RENDER)
+        tr.cycles['render'] = Arch.C_RENDER
+        tr.tile_id = tile_idx
+        tr.output  = fact
+
+        # 6 — POWERDOWN
+        self.fsm.to(State.POWERDOWN)
+        tr.cycles['powerdown'] = Arch.C_POWERDOWN
+
+        self._finalize(tr)
+        return tr
+
+    def _refuse(self, tr: Trace, code: str, target: State) -> Trace:
+        self.fsm.to(target)
+        tr.status       = "REFUSE"
+        tr.refusal_code = code
+        tr.cycles.setdefault('fsm', Arch.C_FSM)
+        tr.cycles.setdefault('tile', 0)
+        tr.cycles.setdefault('render', Arch.C_RENDER)
+        tr.cycles.setdefault('powerdown', Arch.C_POWERDOWN)
+        self._finalize(tr)
+        return tr
+
+    def _finalize(self, tr: Trace) -> None:
+        tr.cycles['fsm'] = tr.cycles.get('fsm', Arch.C_FSM)
+        tr.total_cycles  = sum(tr.cycles.values())
+        tr.energy_pj     = self._energy(tr.total_cycles)
+        tr.fsm_states    = self.fsm.transitions
+
+    # ---- audits ---------------------------------------------
+    def audit_tile_independence(self) -> bool:
+        ids = [id(t.rom) for t in self.tiles]
+        return len(set(ids)) == len(ids)
+
+
+# ─────────────────────────────────────────────────────────────
+# 9. FIXTURE
+# ─────────────────────────────────────────────────────────────
+
+def build_system() -> ST1024:
+    common = {"GENERAL": "Physics does not negotiate."}
+
+    tiles = [
+        DomainTile(0, "THERMODYNAMICS",
+            keywords=["thermo", "entropy", "heat", "energy"],
+            facts={**common,
+                "ENTROPY": "Total entropy of an isolated system always increases.",
+                "ENERGY":  "Energy cannot be created or destroyed, only converted."}),
+        DomainTile(1, "FINANCE",
+            keywords=["finance", "debt", "interest", "deficit"],
+            facts={**common,
+                "DEBT":     "Debt is a claim on future output.",
+                "INTEREST": "Interest is a fixed charge, not a discretionary item."}),
+        DomainTile(2, "WAR",
+            keywords=["war", "defense", "military", "conflict"],
+            facts={**common,
+                "COST":     "Wars are politically costless when debt-financed.",
+                "HARNESS":  "A war surtax restores the cost to the present."}),
+        DomainTile(3, "CAPTURE",
+            keywords=["capture", "donor", "campaign", "lobby"],
+            facts={**common,
+                "DONOR":    "Candidates need money; donors expect alignment.",
+                "REMEDY":   "Sever the pipeline before any fiscal remedy passes."}),
+    ]
+    return ST1024(tiles)
+
+
+# ─────────────────────────────────────────────────────────────
+# 10. TESTS
+# ─────────────────────────────────────────────────────────────
+
+def test_budget_integrity() -> None:
+    assert Arch.budget_sum() == Arch.WCET_CYCLES
+    print(f"✓ [V6] budget integrity — {Arch.budget_sum()} = WCET")
+
+
+def test_tile_independence() -> None:
+    s = build_system()
+    assert s.audit_tile_independence(), "tiles share ROM"
+    s.tiles[0].rom.facts["PROBE"] = "CORRUPTED"
+    assert "PROBE" not in s.tiles[1].rom.facts, "cross-tile leak"
+    print("✓ [V1] tile independence — no shared ROM")
+
+
+def test_ternary_arithmetic() -> None:
+    def d(a, b):
+        ap, an = pack_trits([a]); bp, bn = pack_trits([b])
+        return ternary_dot_packed(ap, an, bp, bn)
+    assert d( 1,  1) ==  1
+    assert d(-1, -1) ==  1
+    assert d( 1, -1) == -1
+    assert d(-1,  1) == -1
+    assert d( 0,  1) ==  0
+    print("✓ [V3] ternary arithmetic — XNOR + popcount, no `*`")
+
+
+def test_determinism() -> None:
+    a, b = build_system(), build_system()
+    q = "what is entropy?"
+    ta, tb = a.process(q), b.process(q)
+    assert ta.tile_id == tb.tile_id, (
+        f"nondeterministic routing: {ta.tile_id} vs {tb.tile_id}"
+    )
+    print(f"✓ [V2] determinism — both runs routed to tile {ta.tile_id}")
+
+
+def test_refusal_ambiguous() -> None:
+    s = build_system()
+    tr = s.process("xyzzy plugh frobnicate")
+    assert tr.status == "REFUSE"
+    assert tr.refusal_code == "0x-AMBIG"
+    print("✓ [V4] refusal — 0x-AMBIG on unknown domain")
+
+
+def test_wcet_branch_reachable() -> None:
+    s = build_system()
+    tr = s.process("what is entropy?", _inject_overrun=10_000)
+    assert tr.status == "REFUSE"
+    assert tr.refusal_code == "0x-WCET-EXCEEDED"
+    print("✓ [V5] WCET branch reachable — injected overrun refused")
+
+
+def test_happy_path() -> None:
+    s = build_system()
+    tr = s.process("what is entropy?")
+    assert tr.status == "OK"
+    assert tr.tile_id == 0
+    assert tr.refusal_code is None
+    print(f"✓ [OK] happy path — entropy routed to tile 0, "
+          f"{tr.total_cycles} cycles")
+
+
+# ─────────────────────────────────────────────────────────────
+# 11. DEMO
+# ─────────────────────────────────────────────────────────────
+
+def main() -> None:
+    print("=" * 68)
+    print("  ST-T1024 GLOBAL REFERENCE EMULATOR")
+    print("=" * 68)
+    print()
+
+    print("── INVARIANT TESTS ──────────────────────────────────────────")
+    test_budget_integrity()
+    test_tile_independence()
+    test_ternary_arithmetic()
+    test_determinism()
+    test_refusal_ambiguous()
+    test_wcet_branch_reachable()
+    test_happy_path()
+    print()
+
+    print("── DEMO ─────────────────────────────────────────────────────")
+    system = build_system()
+    for q in [
+        "what is entropy?",
+        "explain the debt trap",
+        "why do wars get funded",
+        "how does campaign capture work",
+        "asdf qwer zxcv",
+    ]:
+        tr = system.process(q)
+        print(tr.report())
+        print()
+
+    print("── ENERGY NOTE ──────────────────────────────────────────────")
+    print("  Emulated energy is derived, not measured.")
+    print(f"  Active  : {Arch.PJ_PER_ACTIVE} pJ per active cycle   [S]")
+    print(f"  Idle    : {Arch.PJ_PER_IDLE} pJ per idle tile/cycle [S]")
+    print()
+    print("  White paper claims 3.7 µJ = 3,700,000 pJ per query.")
+    print("  Emulated value at 800 cycles is ~0.4 nJ = 400 pJ.")
+    print("  Ratio    : ~9,250× gap — the 3.7 µJ figure MUST be")
+    print("             re-derived or the claim narrowed. See §12.6.")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
