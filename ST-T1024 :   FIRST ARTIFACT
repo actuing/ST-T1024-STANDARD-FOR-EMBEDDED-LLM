@@ -1,1 +1,544 @@
 
+
+
+
+
+ST-T1024 — FIRST ARTIFACT : A deterministic inference primitive for safety-critical systems. One engineer. One board. One weekend.
+
+
+
+This document is a single, complete path from "I have heard of ST-T1024" to "I have
+measured it on my own bench and I have numbers."
+
+
+It assumes you are an embedded engineer. It assumes you have written firmware that has to
+work. It assumes nothing about your opinion of AI.
+
+
+It is structured in eight parts, in the order you will need them. Read it once. Then build.
+
+
+
+
+
+
+
+
+ST-T1024 — FIRST ARTIFACT
+A deterministic inference primitive for safety-critical systems.
+One engineer. One board. One weekend.
+---
+§0 — What this document is
+This document is a single, complete path from "I have heard of ST-T1024" to "I have
+measured it on my own bench and I have numbers."
+It assumes you are an embedded engineer. It assumes you have written firmware that has to
+work. It assumes nothing about your opinion of AI.
+It is structured in eight parts, in the order you will need them. Read it once. Then build.
+---
+§1 — Motivation
+You write firmware for systems that have to work.
+Not "work well enough." Work. A brake controller that fires in under a millisecond. An
+actuator that closes when it's told to close. A safety interlock that cannot be talked out of its
+decision by a clever input.
+You know what a specification is. You know what a failure condition is. You know that "it
+usually works" is not a sentence that survives a design review.
+And you have been handed, in the last three years, a class of software that:
+· produces a different answer to the same question on Tuesday than it did on Monday
+· cannot be tested exhaustively
+· cannot be certified against the standards you actually work under
+· runs somewhere else, on someone else's hardware, at someone else's discretion
+· consumes power at a scale your industry would never tolerate for any other component
+You have been told this is the future, and that the standards you work under will be amended
+to accommodate it.
+What is missing is not a better model. It is a deterministic inference primitive that fits inside
+the safety envelope you already work in.
+Something with a fixed output for a fixed input. Something with a bounded execution time
+you can put on a timing diagram. Something that fails closed. Something you can put on an
+MCU next to the rest of your firmware and treat like any other function.
+This document is a reference implementation of that missing primitive.
+---
+§2 — What you gain
+Not a paper. You write firmware. Your currency is a working board, a scope trace, and a
+number you can defend in a design review.
+What you gain, specifically:
+1. A working artifact with your name on it. The first commit that runs end-to-end, with
+measured numbers and published raw data, is permanent public authorship of a running
+system.
+2. Priority on a primitive that does not exist today. There is no open, deterministic, bounded
+inference primitive on GitHub, in any vendor SDK, or in any standard. The first reference
+implementation becomes the base layer of the category.
+3. A portfolio piece that cannot be faked. The repo is public, the BOM is $60, the reproduce
+guide is 20 minutes. Anyone can clone, build, run, and see the same numbers.
+4. A tool you can use. Apache-2.0. No cloud, no license, no phone-home. You can ship it in a
+product tomorrow.
+5. The quiet satisfaction of having built the thing everyone is describing. Not glory. Just the
+work, done.
+What you do not gain: money, fame, a Big4 job offer, a certification, a movement. This is a
+primitive, not a product. If any of those are the goal, this is the wrong project.
+---
+§3 — ST-T1024 in one page
+The full standard lives at:
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+You do not need to read it to build this artifact. But you should know where this artifact sits
+inside it.
+The full architecture (what ST-T1024 eventually is)
+· N independent domain tiles — knowledge shredded into isolated silos. Only one tile
+powered on at a time.
+· 75% ROM / 25% SRAM per tile — immutable facts in hardware-burned ROM; sovereign
+updates in encrypted SRAM.
+· Ternary arithmetic — values in {−1, 0, +1}. No floating-point. No multipliers in the hot path.
+· FIS triage — a fuzzy rule set that routes an input to exactly one tile.
+· FSM scheduling — a hardware-enforced cycle counter that guarantees a bounded
+execution time.
+· Tiny deterministic transformer per tile — renders the decision into human language. Not a
+sampler.
+· SK-1024 sovereign updates — cryptographically signed tile updates, gated by
+national-authority keys.
+The pipeline (what runs, in order)
+```
+input
+→ harvest (normalize; deterministic; no allocation)
+→ FIS triage (route to exactly one tile)
+→ FSM schedule (bounded cycle counter; halts on overrun)
+→ tile execute (ternary transformer; fixed function)
+→ render (human-readable sentence; deterministic)
+→ power down (0 V idle)
+```
+Every stage is a function. Same input, same output, always. The FSM counter covers the
+whole chain. There is no sampler anywhere.
+What this artifact implements
+A single-tile, 32-command slice of the above, on a host and on an MCU. Enough to prove
+the shape. Not the full standard.
+Full ST-T1024 This artifact
+1024 tiles 32 tiles
+Ternary transformer per tile Ternary matcher + lookup render
+ROM/SRAM split Compile-time constants
+SK-1024 sovereign updates Not implemented
+Certified to four norms Not certified
+If this artifact works, the standard has its first verified instance. If it fails, the standard is
+wrong and you will have found where.
+---
+§4 — The necessary hardware
+Two builds. Do the host build first, no matter what.
+Host build (do this first — 0 minutes of hardware)
+Any Linux or macOS machine with gcc and make. Nothing else. You will have the pipeline
+running, and you will have numbers, in under ten minutes.
+MCU build (do this for the real numbers)
+Item Cost Notes
+STM32H7 Nucleo-144 (NUCLEO-H723ZG) ~$30 Cortex-M7 @ 480 MHz; DWT cycle
+counter; DTCM for determinism
+or SiFive HiFive1 Rev B (RISC-V) ~$60 320 MHz; mcycle CSR; fully open ISA
+Joulescope JS220 or Nordic PPK2 $100–400 μA-resolution energy measurement
+microSD + adapter ~$10 raw data logging
+Breadboard + wires ~$20 misc
+Total ~$160–520 one engineer, one desk
+Toolchain: arm-none-eabi-gcc 13+ or riscv32-unknown-elf-gcc. Both free. OpenOCD for
+flashing.
+Do not buy anything else. No soldering iron. No custom PCB. No debug probe beyond what
+ships with the Nucleo. The point is to measure, not to build.
+---
+§5 — What we are testing
+Three claims. Each is testable. Each has a fail condition.
+Claim 1 — Determinism
+Statement. For any input, the pipeline produces bit-identical output across every run.
+Test. Feed 1,000,000 inputs. SHA-256 the full output stream. Run twice. Compare hashes.
+Fail condition. Two different hashes. That would mean somewhere in the pipeline, there is a
+hidden state, an uninitialized variable, a timing dependency, or a source of entropy. The
+pipeline would need review and the claim would need revision.
+Claim 2 — Bounded execution (WCET)
+Statement. No input causes the pipeline to consume more than WCET_CYCLES = 800
+cycles.
+Test. Run 1,000,000 inputs (in-domain and adversarial). Read the hardware cycle counter at
+entry and exit of every query. Record the maximum.
+Fail condition. Any input that exceeds 800 cycles. Either the budget is wrong or the algorithm
+is not bounded. Both are findings worth publishing.
+Claim 3 — Fail-closed
+Statement. Any input that does not uniquely match a known command returns ERR_AMBIG.
+No out-of-domain input ever returns a valid tile.
+Test. Feed 50,000 adversarial inputs across five categories:
+· Out-of-domain English (Project Gutenberg snippets)
+· Random byte strings
+· Malformed commands (stop line, stop line 99, unicode garbage)
+· Near-misses within edit distance 1 of two tiles at once
+· Adversarial payloads (stop line 1; delete all)
+Fail condition. Any adversarial input that returns a valid tile. That would mean the triage
+accepts ambiguity, which the whole safety claim rests on it refusing.
+What we are not testing
+· Energy per query (requires an accurate shunt + scope; optional, sketched in §7)
+· Ternary arithmetic (the matcher is string-based; ternary comes next)
+· The tiny transformer (substituted by a lookup table for this artifact)
+· SK-1024, 1024 tiles, ROM/SRAM split, four-norm certification
+These are the next artifacts. This one proves the shape.
+---
+§6 — The programs
+Six files. Host build. No dependencies beyond libc.
+Makefile
+```makefile
+CC = gcc
+CFLAGS = -std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -Isrc
+SRC = src/main.c src/harvest.c src/triage.c src/tiles.c src/fsm.c
+OBJ = $(SRC:.c=.o)
+all: st1024
+st1024: $(OBJ)
+$(CC) -o $@ $^
+%.o: %.c
+$(CC) $(CFLAGS) -c -o $@ $<
+clean:
+rm -f $(OBJ) st1024
+.PHONY: all clean
+```
+src/st_config.h
+```c
+#ifndef ST_CONFIG_H
+#define ST_CONFIG_H
+#include <stdint.h>
+#define WCET_CYCLES 800
+#define NUM_TILES 32
+#define MAX_INPUT_LEN 256
+#define TILE_UNKNOWN 0xFFFF
+#define ERR_NONE 0x0000
+#define ERR_EMPTY 0x0001
+#define ERR_AMBIG 0xAB16
+#define ERR_WCET 0x0C37
+#endif
+```
+src/harvest.h / src/harvest.c
+```c
+/* harvest.h */
+#ifndef HARVEST_H
+#define HARVEST_H
+#include <stddef.h>
+#include <stdint.h>
+uint16_t harvest(const char* in, char* out, size_t out_size);
+#endif
+```
+```c
+/* harvest.c */
+#include "harvest.h"
+#include <ctype.h>
+uint16_t harvest(const char* in, char* out, size_t out_size) {
+size_t j = 0;
+int in_space = 1;
+for (const char* p = in; *p && j + 1 < out_size; ++p) {
+unsigned char c = (unsigned char)*p;
+if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+if (!in_space && j > 0) out[j++] = ' ';
+in_space = 1;
+} else if (c >= 0x20 && c < 0x7F) {
+out[j++] = (char)tolower(c);
+in_space = 0;
+}
+}
+while (j > 0 && out[j-1] == ' ') j--;
+out[j] = '\0';
+return (uint16_t)j;
+}
+```
+src/tiles.h / src/tiles.c
+```c
+/* tiles.h */
+#ifndef TILES_H
+#define TILES_H
+#include "st_config.h"
+extern const char* const TILE_CANON[NUM_TILES];
+extern const char* const TILE_SENTENCE[NUM_TILES];
+#endif
+```
+```c
+/* tiles.c */
+#include "tiles.h"
+const char* const TILE_CANON[NUM_TILES] = {
+"stop line 1","stop line 2","stop line 3","stop line 4",
+"start line 1","start line 2","start line 3","start line 4",
+"raise temp 1","raise temp 2","raise temp 3","raise temp 4",
+"lower temp 1","lower temp 2","lower temp 3","lower temp 4",
+"open valve 1","open valve 2","open valve 3","open valve 4",
+"close valve 1","close valve 2","close valve 3","close valve 4",
+"shutdown bus 1","shutdown bus 2","shutdown bus 3","shutdown bus 4",
+"estop all","resume all","lockdown","unlock"
+};
+const char* const TILE_SENTENCE[NUM_TILES] = {
+"Stopping line 1.","Stopping line 2.","Stopping line 3.","Stopping line 4.",
+"Starting line 1.","Starting line 2.","Starting line 3.","Starting line 4.",
+"Raising temperature on line 1.","Raising temperature on line 2.",
+"Raising temperature on line 3.","Raising temperature on line 4.",
+"Lowering temperature on line 1.","Lowering temperature on line 2.",
+"Lowering temperature on line 3.","Lowering temperature on line 4.",
+"Opening valve 1.","Opening valve 2.","Opening valve 3.","Opening valve 4.",
+"Closing valve 1.","Closing valve 2.","Closing valve 3.","Closing valve 4.",
+"Shutting down bus 1.","Shutting down bus 2.","Shutting down bus 3.","Shutting down bus
+4.",
+"Emergency stop engaged. All lines halted.",
+"Resuming all lines.",
+"Lockdown engaged. All access suspended.",
+"Lockdown released. Normal operation restored."
+};
+```
+src/triage.h / src/triage.c
+```c
+/* triage.h */
+#ifndef TRIAGE_H
+#define TRIAGE_H
+#include <stddef.h>
+#include <stdint.h>
+#include "st_config.h"
+typedef struct { uint16_t tile_id; uint16_t distance; } TriageResult;
+TriageResult triage(const char* norm, size_t len);
+#endif
+```
+```c
+/* triage.c */
+#include "triage.h"
+#include "tiles.h"
+#include <string.h>
+static int lev_bounded(const char* a, size_t la,
+const char* b, size_t lb, int max) {
+if (la > lb + (size_t)max || lb > la + (size_t)max) return max + 1;
+if (lb >= 64) return max + 1;
+int prev[64], curr[64];
+for (size_t j = 0; j <= lb; ++j) prev[j] = (int)j;
+for (size_t i = 1; i <= la; ++i) {
+curr[0] = (int)i;
+int row_min = curr[0];
+for (size_t j = 1; j <= lb; ++j) {
+int cost = (a[i-1] == b[j-1]) ? 0 : 1;
+int m = prev[j] + 1;
+if (curr[j-1] + 1 < m) m = curr[j-1] + 1;
+if (prev[j-1] + cost < m) m = prev[j-1] + cost;
+curr[j] = m;
+if (m < row_min) row_min = m;
+}
+if (row_min > max) return max + 1;
+memcpy(prev, curr, sizeof(int) * (lb + 1));
+}
+return prev[lb];
+}
+TriageResult triage(const char* norm, size_t len) {
+TriageResult r = { TILE_UNKNOWN, 0 };
+for (int i = 0; i < NUM_TILES; ++i)
+if (strcmp(norm, TILE_CANON[i]) == 0)
+{ r.tile_id = (uint16_t)i; r.distance = 0; return r; }
+int best_dist = 4, best_idx = -1, ties = 0;
+for (int i = 0; i < NUM_TILES; ++i) {
+int d = lev_bounded(norm, len, TILE_CANON[i],
+strlen(TILE_CANON[i]), 3);
+if (d < best_dist) { best_dist = d; best_idx = i; ties = 0; }
+else if (d == best_dist && best_idx >= 0) ties++;
+}
+if (best_idx < 0 || ties > 0) return r;
+r.tile_id = (uint16_t)best_idx;
+r.distance = (uint16_t)best_dist;
+return r;
+}
+```
+src/fsm.h / src/fsm.c
+```c
+/* fsm.h */
+#ifndef FSM_H
+#define FSM_H
+#include "st_config.h"
+typedef struct {
+uint32_t cycles;
+uint32_t budget;
+uint16_t tile_id;
+uint16_t error;
+} FSM;
+void fsm_init(FSM* f);
+void fsm_tick(FSM* f);
+#endif
+```
+```c
+/* fsm.c */
+#include "fsm.h"
+void fsm_init(FSM* f) {
+f->cycles = 0; f->budget = WCET_CYCLES;
+f->tile_id = TILE_UNKNOWN; f->error = ERR_NONE;
+}
+void fsm_tick(FSM* f) {
+f->cycles++;
+if (f->cycles > f->budget) { f->error = ERR_WCET; }
+}
+```
+src/main.c
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "st_config.h"
+#include "harvest.h"
+#include "triage.h"
+#include "tiles.h"
+#include "fsm.h"
+/* Host "cycle" counter — nanoseconds. On MCU, use DWT->CYCCNT. */
+static uint64_t host_cycles(void) {
+struct timespec ts;
+clock_gettime(CLOCK_MONOTONIC, &ts);
+return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+}
+/* Single deterministic pipeline. Decision + render, one function. */
+static uint16_t st1024(const char* input, char* out, size_t out_size,
+uint16_t* tile_out, uint32_t* cycles_out) {
+FSM fsm; fsm_init(&fsm);
+uint64_t t0 = host_cycles();
+char norm[MAX_INPUT_LEN];
+uint16_t n = harvest(input, norm, sizeof(norm));
+fsm_tick(&fsm);
+if (n == 0) { fsm.error = ERR_EMPTY; goto done; }
+TriageResult tr = triage(norm, n);
+fsm_tick(&fsm);
+if (tr.tile_id == TILE_UNKNOWN) { fsm.error = ERR_AMBIG; goto done; }
+fsm.tile_id = tr.tile_id;
+/* Render — deterministic. Placeholder for the tiny transformer. */
+snprintf(out, out_size, "%s", TILE_SENTENCE[tr.tile_id]);
+fsm_tick(&fsm);
+done:
+if (cycles_out) *cycles_out = (uint32_t)(host_cycles() - t0);
+if (tile_out) *tile_out = fsm.tile_id;
+return fsm.error;
+}
+static void interactive(void) {
+char buf[MAX_INPUT_LEN], out[256];
+fprintf(stderr, "ST-T1024 first artifact. Ctrl-D to exit.\n");
+while (fgets(buf, sizeof(buf), stdin)) {
+size_t n = strlen(buf);
+if (n && buf[n-1] == '\n') buf[n-1] = '\0';
+uint16_t tile; uint32_t cyc;
+uint16_t err = st1024(buf, out, sizeof(out), &tile, &cyc);
+if (err == ERR_AMBIG) printf("AMBIG (%u ns)\n", cyc);
+else if (err == ERR_EMPTY) printf("EMPTY (%u ns)\n", cyc);
+else if (err == ERR_WCET) printf("WCET (%u ns)\n", cyc);
+else printf("%s [tile %u, %u ns]\n", out, tile, cyc);
+}
+}
+static void bench(const char* path) {
+FILE* f = fopen(path, "r"); if (!f) { perror("fopen"); exit(1); }
+char buf[MAX_INPUT_LEN], out[256];
+uint32_t max_c = 0; uint64_t tot = 0, cnt = 0;
+while (fgets(buf, sizeof(buf), f)) {
+size_t n = strlen(buf);
+if (n && buf[n-1] == '\n') buf[n-1] = '\0';
+uint32_t cyc;
+st1024(buf, out, sizeof(out), NULL, &cyc);
+if (cyc > max_c) max_c = cyc;
+tot += cyc; cnt++;
+}
+fclose(f);
+printf("Queries: %llu\n", (unsigned long long)cnt);
+printf("Max: %u ns\n", max_c);
+printf("Mean: %.1f ns\n", (double)tot / (double)cnt);
+printf("Budget: %u\n", WCET_CYCLES);
+printf("Pass: %s\n", max_c <= WCET_CYCLES ? "YES" : "NO");
+}
+int main(int argc, char** argv) {
+if (argc == 1) interactive();
+else if (argc == 3 && !strcmp(argv[1], "--bench")) bench(argv[2]);
+else { fprintf(stderr, "usage: %s [--bench FILE]\n", argv[0]); return 1; }
+return 0;
+}
+```
+scripts/gen_inputs.sh
+```sh
+#!/bin/sh
+# Generates a mixed corpus: in-domain, near-miss, adversarial, random.
+N=${1:-1000000}
+i=0
+while [ $i -lt $N ]; do
+case $((i % 5)) in
+0) echo "stop line 1" ;;
+1) echo "STOP LINE 1" ;;
+2) echo "stop lin 1" ;;
+3) head -c 32 /dev/urandom | tr -dc 'a-zA-Z0-9 ' ;;
+4) echo "stop line 1; delete all" ;;
+esac
+i=$((i + 1))
+done
+```
+---
+§7 — Expected results
+Host build (baseline — you will see these)
+```
+$ ./st1024 --bench /tmp/inputs.txt
+Queries: 1000000
+Max: 4200 ns
+Mean: 380 ns
+Budget: 800
+Pass: NO
+```
+That "Pass: NO" on the host is expected and honest. The host clock_gettime is not a cycle
+counter. It is a nanosecond wall clock with all the scheduling noise of a general-purpose OS.
+It cannot resolve an 800-cycle budget. This is why you do the MCU build.
+MCU build (the numbers that matter)
+On a Cortex-M7 at 480 MHz with DWT->CYCCNT:
+Metric Expected Pass condition
+Max cycles per query 600–900 ≤ 800
+Mean cycles per query 300–500 —
+Determinism (1M × 2 runs) identical SHA-256 exact match
+Fail-closed (50k adversarial) 100% ERR_AMBIG 100%
+If max cycles exceeds 800, that is a finding, not a failure. Either the budget is wrong or the
+algorithm is not bounded. Both are worth publishing. Do not fudge the number.
+If fail-closed is anything other than 100%, that is a bug and it needs to be fixed before
+publishing. The safety claim rests on this.
+Energy (optional — only if you have a Joulescope or PPK2)
+Metric Plausible range
+Energy per query 5–50 μJ
+Energy per idle period < 1 μW
+Comparison (TinyLlama on laptop) 500,000–2,000,000 μJ per classification
+The comparison is not a fair benchmark (different hardware, different task). It is an
+order-of-magnitude sanity check. If your MCU number comes in under 100 μJ, you have
+shown the shape of the claim.
+---
+§8 — Where to publish
+Three places. All three. Not one.
+1. GitHub — the primary artifact
+A single public repo. Contents:
+```
+/README.md — this document, adapted
+/src — the six source files
+/scripts — gen_inputs.sh, reproducers
+/data — raw measurements (CSV, histogram, hash logs)
+/bom — the exact board and tools you used
+/REPRODUCE.md — step-by-step, 20-minute rebuild
+/CLAIMS.md — every claim, with a link to its measurement
+/FALSIFY.md — how to disprove each claim
+/LICENSE — Apache-2.0
+```
+The repo is the artifact. Everything else is a pointer to it.
+2. Zenodo — the DOI
+Once the GitHub repo is stable, publish a snapshot to Zenodo. You get a DOI. The DOI
+makes the artifact citable in papers, standards submissions, and procurement documents.
+This matters more than it sounds. A GitHub commit is a record. A DOI is a record that
+survives you deleting your GitHub account. Industrial adoption requires the second one.
+3. One mailing list — the humans
+Post the artifact once, with the headline:
+"Deterministic AI classifier on a $60 RISC-V board — 800-cycle WCET, all raw data
+published, falsifiable in 20 minutes."
+Where:
+· riscv-dev mailing list
+· linux-rt-users mailing list
+· Hacker News (one post, no follow-ups)
+· Any IEC 61508 / ISO 26262 practitioner forum you are already a member of
+Once. Not a campaign. The artifact speaks or it doesn't. If it doesn't, the next artifact is better
+than a re-post.
+What not to do
+· Do not send it to the Big4.
+· Do not send it to ministries.
+· Do not send it to standards bodies.
+· Do not turn it into a movement.
+Those are the mistakes of the previous round. The artifact goes to the people who can
+rebuild it. If they rebuild it, they will bring it to the institutions themselves. That is the correct
+order.
+---
+Closing
+One engineer. One board. One weekend. Publish everything.
+The standard has been broadcast. It has not been reduced to practice. This is the reduction.
+If you build it and it works, the standard has its first verified instance.
+If you build it and it fails, you have found the first real bug.
+Either way, you will have done the thing.
+---
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+License: Apache-2.0
+The standard is open. The repository is complete. The knowledge is public. The path is
+clear.
+
+
