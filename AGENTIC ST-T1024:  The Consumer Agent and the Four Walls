@@ -1,1 +1,360 @@
 
+
+
+
+
+
+The Consumer Agent and the Four Walls: ST-T1024 A1–A16 as a Wall-Free Agency
+Architecture
+
+Draft v0.1 — for circulation and critique
+
+Author: M. Taalabi, LLM-DIPLOMAT Team
+Date: October 2026
+License: Apache-2.0
+
+
+---
+
+Abstract
+In 2026, a new class of consumer agent is taking shape: Muse, Instinct, and what the
+"Agents and their better half" article calls "a market-facing representative of the consumer."
+
+https://platforms.substack.com/p/agents-and-their-better-half?utm_source=share&utm_medi
+um=android&r=3nsea2
+
+https://platforms.substack.com/p/how-agents-unlock-new-markets?utm_source=share&utm_
+medium=android&r=3nsea2
+
+These agents can search, evaluate, and eventually transact on the consumer's behalf. The
+article's core diagnosis is precise: we have agentic participants, but not yet agentic markets
+— because intelligence is accumulating on only one side of the market.
+This paper accepts that diagnosis but asks the question the article does not: on what
+architecture can such a consumer agent run without inheriting the four walls of current LLM
+agents?
+The four walls are measurable: energy (global AI data centre power capacity has reached
+29.6 GW, equivalent to New York State's peak demand); water (direct data centre cooling
+water could rise from 222 billion litres in 2025 to 644 billion litres by 2030); hallucination
+(22% to 94% across 26 models tested); and liability (Amazon blocked Meta's Muse on
+September 21, 2026, citing unauthorized agent access).
+This paper argues that ST-T1024's agentic extension A0–A10 provides the deterministic
+foundation for a consumer agent, and A11–A16 provides the cross-organizational layer.
+Together, they present a consumer agent that is architecturally incapable of producing the
+four walls — not by making the LLM safer, but by removing the LLM from the decision path.
+---
+1. The Agentic Market, and Its Gap
+1.1 The Moment the Article Captures
+The article "Agents and their better half" describes a real structural shift in the agent
+economy. Muse and Instinct are "a market-facing representative of the consumer" that
+"knows enough about an individual to act on that individual's behalf." The article's central
+distinction is:
+· Agentic participants: one-sided intelligence that improves navigation of an existing market.
+The buyer becomes adaptive; supply remains pre-composed.
+· Agentic markets: intelligence on both sides, where agents "mutually construct an
+executable offer" rather than one side selecting from a catalogue.
+The author's diagnosis is direct and correct: "We have agentic participants but don't have
+agentic markets yet."
+1.2 The Question the Article Does Not Answer
+The article describes what should happen — agents on both sides negotiating, mutually
+constructing offers. It does not describe what architecture this happens on.
+The implicit assumption is that these will be LLM agents, negotiating through natural
+language or tool-calling protocols. But the article's own examples already show the cost of
+that assumption: Indeed paused Apply For Me after employer feedback; Amazon blocked
+Muse for "unauthorized agent access."
+These are not bugs to be patched. They are consequences of building market infrastructure
+on a stochastic substrate.
+1.3 The Four Walls
+The four walls are not rhetoric. They are measurements.
+Energy. AI data centre power capacity reached 29.6 GW by the end of 2025 — equivalent to
+New York State's peak demand, comparable to the entire electricity consumption of
+Switzerland or Austria. Data centre power demand has already reached roughly 47,000 MW.
+Water. Data centres consumed 222 billion litres of water for direct cooling in 2025. Rystad
+Energy estimates this could nearly triple to 644 billion litres by 2030 absent water-saving
+measures. GPT-4o alone may consume enough water annually for over 1.2 million people's
+drinking needs.
+Hallucination. Across 26 models tested, hallucination rates range from 22% to 94%. Grok
+4.20 Beta was lowest at 22%; GPT-OSS-20B highest at 94%. In an agent-based negotiation
+study, agents made false claims in 88% of sessions.
+Liability. Amazon blocked Muse on September 21, 2026. Amazon's statement: "Continued
+access by an unauthorized AI agent violates Amazon's Conditions of Use." The specific
+objections: Muse failed to identify itself when browsing, captured customer credentials, and
+raised privacy and security concerns. When an LLM agent hallucinates a transaction, who
+bears the cost — this question has no answer in the current stack.
+1.4 The Four Walls Are One Failure
+Energy, water, hallucination, and liability are four faces of one architectural failure: placing a
+stochastic, open-ended generator in the decision path of market transactions.
+· Energy/Water: Stochastic inference scales with prompt volume, not with verified outcomes.
+· Hallucination: The loss function rewards fluency, not truth. No mechanism checks output
+against ground truth before emission.
+· Liability: An LLM agent cannot be held accountable for a "decision" it did not
+deterministically make. The trace does not exist.
+ST-T1024's answer is architectural: remove the LLM from the decision path.
+---
+2. Recall: ST-T1024 and the Agentic Extension
+2.1 Core Commitments
+ST-T1024 is a deterministic inference architecture for embedded LLMs. Its defining
+commitments:
+· Determinism by construction: Temperature fixed at 0.0. Same input, same output,
+bit-identical. Simulation equals benchmarking.
+· FIS triage: Inputs routed to exactly one domain tile by a ROM-burned fuzzy inference
+system.
+· FSM scheduling: Execution under a bounded cycle counter with a declared Assured
+Execution Time (AET).
+· Ternary logic: Values in {−1, 0, +1}. XNOR + popcount arithmetic. No floating-point
+multipliers in the hot path.
+· Tile independence: Tiles share no knowledge by reference. Shared facts are duplicated in
+each tile, independently signed and attested.
+· Refusal as first-class output: 0x-AMBIG is not an error condition. It is the safety state.
+The core claim: the system's behavior is deterministic, finite, and enumerable — regardless
+of the underlying model's internal character.
+2.2 The Agentic Extension A0–A10
+The agentic extension moves ST-T1024 from a deterministic oracle to a certified actor. Its
+central theorem:
+Verifiable Agency Theorem. Given: (i) a finite action library A, ROM-burned; (ii) a finite plan
+library P, ROM-burned; (iii) an FSM with bounded transition function and bounded T-AET;
+and (iv) formal preconditions and postconditions for every action — the complete behavior
+set B = {all possible action sequences the agent can produce} is finite, enumerable, and
+exhaustively verifiable before deployment.
+Mechanisms: A1 (Extended FSM), A2 (ROM-burned Action Library), A5 (VERIFY gate), A6
+(Tile Invocation Protocol), A7 (Persistent Deterministic Memory), A8 (Goal Parsing and Plan
+Library), A9 (Bounded Task Execution), A10 (Verifiable Agency Theorem).
+Consequence: the system cannot act outside B. This is the property that makes certification
+possible.
+2.3 The Consumer Agent Concrete Case
+The article describes a consumer agent: a Muse or Instinct that searches, evaluates, and
+eventually transacts.
+In ST-T1024, that agent is instantiated as:
+· State: consumer intent declared as a finite set of fields (goal class, price constraints,
+merchant allowlist, deadline, spend cap).
+· Actions: ROM-burned action library — search, filter, compare, add-to-cart, initiate
+transaction, refuse, escalate-to-consumer.
+· Plans: plan library — PLAN_BROWSE, PLAN_COMPARE, PLAN_TRANSACT,
+PLAN_HANDOFF.
+· Trajectory predicates: sequence-level checks over a window W — spend cap, authorized
+action classes, merchant allowlist.
+· EAR (Environment Assumption Register): declared bounds on price accuracy, inventory
+availability, merchant response validity. Bound violation → refuse.
+The agent selects actions. It does not generate them. If an action is not in B, or is blocked by
+a trajectory predicate, or violates the EAR, the result is 0x-AMBIG — not a hallucination, not
+a confident guess, but a refusal.
+2.4 The Cross-Organizational Extension A11–A16
+The consumer agent does not exist alone. It meets platform agents, merchant agents,
+payment processors. A11–A16 provides the language for that meeting:
+· A11 — Agent Certificate: signed, versioned artifact containing B, P, hazard matrix, EAR,
+refusal floor ε, ROM hash, signature chain.
+· A12 — Intent Envelope: consumer-signed, scoped, revocable delegation token. Every
+action traceable to an envelope clause.
+· A13 — Counterparty Admission Protocol: platform publishes its own machine-readable
+contract — accepted actions, error bounds, refusal semantics.
+· A14 — Action Vocabulary Mapping: provable f: B_agent → B_platform ∪ {REFUSE}.
+· A15 — Refusal as Wire Protocol: standardized refusal codes (0x-AMBIG-INTENT, -GOAL,
+-ACTION, -STATE, -TRACE, -EPISTEMIC, -BUDGET).
+· A16 — Cross-Organizational Trace Ledger: append-only, hash-chained, Merkle-anchored,
+held by both parties.
+These convert the conflict from an unresolvable commercial dispute into a decidable
+engineering problem.
+---
+3. How the Consumer Agent Does Not Produce the Four Walls
+3.1 Energy
+LLM agent: Stochastic inference scales with prompt volume. Every call consumes the same
+energy as a correct response. 2.5 billion daily prompts → hundreds of GWh/year.
+ST-T1024 agent: Ternary logic eliminates floating-point multipliers. Power gating drops idle
+tiles to 0 V. AET bounds execution to a declared cycle budget (WCET_CYCLES = 800,
+measured in nanoseconds at any clock). The agent does not run open-ended generation. It
+runs triage (fixed FIS computation), execution (fixed ternary matcher), and render
+(deterministic sentence). Energy consumption is proportional to verified queries, not to
+prompt length.
+Result: the consumer agent's energy footprint is embedded-class (μW–mW), not
+data-centre-class.
+3.2 Water
+LLM agent: Runs in hyperscale data centres. Direct cooling water + indirect water footprint
+tied to electricity consumption.
+ST-T1024 agent: Runs on edge hardware (MCU, embedded SoC). No data centre, no
+cooling tower, no aquifer draw. Power envelope is μW–mW, meaning thermal load is handled
+by passive cooling or a small fan.
+Result: the consumer agent's water footprint is zero at data-centre scale.
+3.3 Hallucination
+LLM agent: Samples from a probability distribution. The loss function rewards fluency. RLHF
+and DPO can shape preferences but cannot make generation truth-tracking. In 88% of
+negotiation sessions, agents made false claims.
+ST-T1024 agent: The LLM is not in the decision path. Actions are selected from a
+ROM-burned library. If an action is not in B, or violates preconditions, or is blocked by a
+trajectory predicate, or an EAR bound is violated — the result is 0x-AMBIG. The system
+refuses rather than guesses.
+Tile independence means knowledge is not shared between tiles by reference. Shared facts
+are duplicated and independently attested. If no certified entry exists in the knowledge base,
+the answer is a refusal.
+Result: hallucination is structurally impossible in the basic path. The agent says what it
+knows, or refuses.
+3.4 Liability
+LLM agent: A "decision" that cannot be held accountable. The trace does not exist. When
+something goes wrong, there is no verifiable artifact showing what happened, who
+authorized it, or who is responsible. Amazon's block of Muse is exactly this failure made
+visible.
+ST-T1024 agent: Every action traces to a tile, a triage decision, an immutable entry, a named
+signer. A12 Intent Envelope is consumer-signed. A16 Trace Ledger is hash-chained and
+held by both parties. A15 refusal codes are contractually meaningful — an incorrect refusal
+is itself a breach.
+Result: liability is traceable. "The model decided" is not an available defense.
+---
+4. Why This Matters Now
+The article describes the market moment. ST-T1024 proposes the infrastructure standard for
+that moment. The article's own examples show why the infrastructure question is urgent:
+· Indeed paused Apply For Me because changing how applications are submitted also
+required new ways for both sides to engage. This is the one-sided-intelligence failure.
+· Amazon blocked Muse because there is no portable, machine-verifiable artifact by which
+one organization can assess another's agent. This is the cross-organizational gap failure.
+· 88% of negotiating agents made false claims. This is the
+stochastic-substrate-in-the-decision-path failure.
+· The four walls are measured. Energy, water, hallucination, and liability are not theoretical
+— they are reported, regulated, and already shaping the market.
+ST-T1024's argument is that these are not bugs fixable with better prompting, better RLHF,
+or better guardrails. They are fixable only by removing the LLM from the decision path —
+putting it behind a deterministic action layer, a certified knowledge base, and a refusal-first
+protocol.
+---
+5. What Remains
+This paper accepts the residuals of the ST-T1024 standard itself:
+1. The trust model is unsolved. The certificate is only as good as its signers. Three candidate
+models (mutual certification, third-party certifier, platform-as-certifier) are named; the choice
+is left to the market.
+2. The consumer agent case is uninstantiated. The ACC case proved the machinery on
+ASIL-D. The commerce case — one consumer, one agent, one platform — has not been
+built.
+3. The certificate format is undrafted. JSON Schema, CBOR, Ed25519 are proposed; the
+schema is not published.
+4. Silicon validation is unbuilt. Energy numbers come from emulation.
+5. Signer throughput. Every tile gets attested by the country authority. Every shared fact gets
+signed in every tile that contains it. The signing cadence must match the update cadence.
+6. ε > 0. The refusal floor is nonzero in an open environment. It is the safety margin, not a
+defect. It is a contract term, not something to eliminate.
+---
+6. Conclusion
+The agentic article correctly identifies the structural gap in the agent economy: intelligence
+on one side, no equivalent on the other. It correctly calls for "agentic markets" — agents on
+both sides mutually constructing executable offers.
+It does not say what architecture this happens on. The default assumption is LLM agents
+negotiating in natural language. But the four walls are already visible in the market: energy,
+water, hallucination, liability.
+ST-T1024 with A1–A16 proposes a different architecture: deterministic in action, certifiable in
+refusal, verifiable across organizational boundaries. A consumer agent that can search,
+compare, and transact — without generating. A consumer agent that can represent
+consumer intent without hallucinating commitments. A consumer agent that can interact with
+counterparty agents without producing un-attributable liability.
+Whether this is the right bet is an empirical question. But the alternative — LLM agents
+negotiating with each other at an 88% false-claim rate — has already failed in controlled
+tests.
+---
+Appendix: The Core Claim
+Wall LLM agent ST-T1024 + A1–A16 agent
+Energy Data-centre scale, scales with prompt volume Embedded scale, scales with verified
+queries
+Water Hyperscale cooling No data-centre cooling
+Hallucination 22–94%, architectural Structurally impossible in the basic path
+Liability Unfalsifiable, "the model decided" Traceable, A16 ledger, A15 refusal codes
+One line: The consumer agent can be architecturally incapable of producing the four walls —
+not by making the LLM safer, but by not putting the LLM in the decision path.
+---
+—
+References
+Draft v0.1 — for circulation and critique
+Author: M. Taalabi, LLM-DIPLOMAT Team
+Date: October 2026
+License: Apache-2.0
+---
+Primary Source: The Agentic Market Thesis
+[1] Choudary, S. P. “Agents – and their better half.” Platforms, AI, and the Economics of
+BigTech (Substack), October 3, 2026.
+https://platforms.substack.com/p/agents-and-their-better-half
+[2] Choudary, S. P. “How agents unlock new markets.” Platforms, AI, and the Economics of
+BigTech (Substack), October 10, 2026.
+https://platforms.substack.com/p/how-agents-unlock-new-markets
+The Four Walls: Measured Data
+Energy.
+[3] UNECE. “Datacentres threaten electricity system resilience, warns UNECE, calling for
+strategic policy integration.” Press release, September 7, 2026.
+https://unece.org/media/Sustainable-Energy/press/416181
+[4] Gartner. “Gartner Says Electricity Demand for Data Centers to Grow 16% in 2025 and
+Double by 2030.” Press release, November 17, 2025.
+https://www.gartner.com/en/newsroom/press-releases/2025-11-17-gartner-says-electricity-de
+mand-for-data-centers-to-grow-16-percent-in-2025-and-double-by-2030
+[5] ZDNet Korea. “AI가 키운 전력 갈증…데이터센터 소비량, 2030년 2배 넘는다.” June 12,
+2026. https://zdnet.co.kr/view/?no=20260612094803
+Water.
+[6] Rystad Energy. “Tech Thirst: Data center water consumption could triple by 2030 without
+efficiency gains.” September 8, 2026.
+https://www.rystadenergy.com/news/data-center-water-consumption-could-triple-by-2030
+[7] Down To Earth. “Data centre water consumption could triple to 644 billion litres by 2030.”
+August 27, 2026.
+https://www.downtoearth.org.in/science-technology/data-centre-water-consumption-could-tri
+ple-to-644-billion-litres-by-2030
+Hallucination.
+[8] Stanford HAI. AI Index 2026. Chapter 3, Figure 3.2.6 (hallucination rates across 26
+models). https://hai.stanford.edu/assets/files/hai-ai-index-2026-chinese-version-082226.pdf
+[9] arXiv. “Bibliographic fabrication rates across 26 large language models.” 2026.
+https://browse-export.arxiv.org/pdf/2609.14988
+Liability / The Amazon–Meta Conflict.
+[10] Business Insider. “Amazon is keeping Meta’s Muse out of its shopping carts.”
+September 20, 2026.
+https://www.businessinsider.com/amazon-blocks-meta-muse-ai-agent-shopping-site-2026-9
+[11] TechRepublic. “Amazon Blocks Meta’s Muse AI Agent From Shopping on Amazon.com
+Over Bot Access.” September 22, 2026.
+https://www.techrepublic.com/fr/article/news-amazon-blocks-meta-muse/
+[12] Times of India. “Amazon blocks Meta’s AI Agent Muse AI on its app, unhappy with
+Facebook-parent capturing and storing customer credentials.” September 21, 2026.
+https://timesofindia.indiatimes.com/technology/tech-news/amazon-blocks-metas-ai-agent-mu
+se-ai-on-its-app
+[13] ANTARA News. “Amazon larang Muse AI milik Meta untuk belanja di situsnya.”
+September 22, 2026.
+https://www.antaranews.com/berita/5753283/amazon-larang-muse-ai-milik-meta-untuk-belan
+ja-di-situsnya
+ST-T1024 Corpus (Primary)
+[14] Taalabi, M. ST-T1024: A Deterministic Standard for Embedded Language Models —
+White Paper V2. Zenodo, October 2026. DOI: 10.5281/zenodo.23102533. GitHub:
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+[15] Taalabi, M., and LLM-DIPLOMAT Team. “AGENTIC ST-T1024: From Certified Agency to
+Inter-Organizational Admission.” Zenodo, September 22, 2026. DOI:
+10.5281/zenodo.22899244.
+[16] Taalabi, M., and LLM-DIPLOMAT Team. “AGENTIC ST-T1024, Concrete Case: Adaptive
+Cruise Control with Emergency Braking.” Zenodo, September 15, 2026. DOI:
+10.5281/zenodo.22769429.
+[17] Taalabi, M. “AGENTIC ST-T1024. A6: Tile Invocation Protocol.” In [14].
+Contextual and Domain References
+[18] IEEE Xplore. “Analysis of Generalist and Domain-Specific Large Language Models for
+Medical Assessment.” Conference paper, August 19–20, 2026.
+https://ieeexplore.ieee.org/document/11699040
+[19] Free Malaysia Today. “AI data centres are less thirsty now, say tech giants.” September
+7, 2026.
+https://www.freemalaysiatoday.com/category/business/2026/09/07/ai-data-centres-are-less-t
+hirsty-now-say-tech-giants
+[20] Economic Times (India). “Nvidia, Big Tech turn to water-saving cooling for AI data
+centres: Report.” September 6, 2026.
+https://enterpriseai.economictimes.indiatimes.com/news/industry/nvidia-big-tech-turn-to-wate
+r-saving-cooling-for-ai-data-centres-report/133874921
+[21] Pakistan Observer. “Data center electricity demand projected to double by 2030 amid AI
+rapid expansion.” October 3, 2026.
+https://pakobserver.net/data-center-electricity-demand-projected-to-double-by-2030-amid-ai-
+rapid-expansion/
+Verification Notes
+· Primary corpus references [14]–[17] are drawn from the Zenodo and GitHub locations
+provided in the conversation. These are the load-bearing references. Verify titles, DOIs, and
+section numbers against the actual published artifacts before circulation.
+· The Substack articles [1]–[2] are the source of the “agentic participants” vs. “agentic
+markets” distinction. The first is the article referenced in the query.
+· Energy and water figures are from Gartner, Rystad Energy, and UNECE. These are
+independent, named sources with published methodologies.
+· Hallucination range (22%–94%) is from Stanford HAI’s AI Index 2026, which tested 26
+models. The arXiv study [9] reports a wider range (10.2%–98.4%) across a different
+methodology.
+· The Amazon–Meta conflict references [10]–[13] are contemporaneous news reports from
+multiple outlets. The factual claims are consistent across sources.
+· Reference [18] (medical LLM benchmarking) is included as contextual evidence of
+domain-specific hallucination and refusal rate variation. It is not load-bearing for the four
+walls argument.
+· Items requiring verification before circulation: [14] White Paper V2 DOI and Zenodo record;
+[15] Agentic ST-T1024 DOI; [16] ACC case DOI. These were provided by the author in
+conversation but may need confirmation against the live repositories.
+
+
+
+
