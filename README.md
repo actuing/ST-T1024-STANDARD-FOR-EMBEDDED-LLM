@@ -407,6 +407,15 @@ ESCALATE Plan refuses the unsafe action, then executes the declared fallback. Th
 never enters a null state. ESCALATE is required for safety-critical plans. A refusal without escalation is a null state —
 and a null state is not a safe state.
 ---
+
+
+Paper:
+The Consumer Agent and the Four Walls: ST-T1024 A1–A16 as a Wall-Free Agency Architecture
+
+https://zenodo.org/records/23296427
+
+
+---
 Alignment with the Four Foundational Norms
 ST-T1024 does not adapt to each standard separately. The architecture was designed from
 the ground up to meet the technical requirements all four share. The differences between
