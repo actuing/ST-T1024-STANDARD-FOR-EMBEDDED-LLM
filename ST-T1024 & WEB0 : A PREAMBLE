@@ -1,1 +1,273 @@
 
+
+
+
+ST-T1024 & WEB0
+
+A Preamble to Seven Articles — On the Challenge of Reaching an Unsigned World from a Signed Architecture, and the Series That Answers It
+
+M. Taalabi · LLM-DIPLOMAT, Team · October 2026
+License: Apache-2.0 — Free for all. Forever.
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+
+Series companion to AGENTIC ST-T1024 (A1–A16)
+
+---
+
+THE CHALLENGE
+
+A bounded architecture that cannot reach the web is a product with a ceiling.
+
+The knowledge layer has two tiers — ROM for the invariant substrate, SRAM for the certified revisable layer. Both are built for knowledge that changes slowly enough to be signed. A regulatory filing. A clinical guideline. A physical constant. The system answers from them or refuses.
+
+And then a citizen asks about something that happened this morning.
+
+The tiles have nothing. The Friday session has not met. The source has not been attested. The system returns 0x-AMBIG-EPISTEMIC and the citizen concludes the product is useless.
+
+That is the challenge. Not a technical one, in the ordinary sense. A structural one: the architecture is built on attestation, and the world it must describe is unsigned.
+
+Every query presents the same question: can this be attested, or must it be fetched?
+
+The corpus has answered that question for the tiles. It has not answered it for the web.
+
+---
+
+WHY A BROWSER IS NOT THE ANSWER
+
+The obvious move is to add a browser. Fetch the page, read it, answer from it. Every frontier product does this.
+
+A browser is an unsigned channel. It is written by anyone, altered by anyone, served by anyone. It can contain a fabricated fact, a manipulated statistic, a prompt injection. The architecture cannot attest it, because there is no signer.
+
+A system that browses is a system that accepts unsigned inputs. That is the definition of the architecture ST-T1024 was built to replace.
+
+The Provenance Wall states the principle plainly: the channel that cannot attest its origin cannot carry authority. A browser is such a channel.
+
+So the answer is not a browser. But it cannot be a refusal either, because a system that refuses the present is a system that serves only the past.
+
+The series exists to resolve that tension without resolving it in favour of either horn.
+
+---
+
+THE SERIES
+
+Seven articles. Each answers one question the previous ones raise. Each is a separate paper because each has its own thesis, its own falsifiers, and its own residuals.
+
+ST-T1024 & WEB1 — THE COURIER, NOT THE BROWSER
+
+Why the architecture fetches rather than browses.
+
+The first paper states the architectural answer. The system does not browse. It fetches from attested sources, proposes the update, and waits for the signer. The courier, not the browser. It states the cost — the system is slower, narrower, and requires an operator — and it states the market that accepts that cost: the four certified industries and the citizen lambda, for the questions that matter.
+
+Function in the series: establishes that web access is possible without a browser, and names the price.
+
+ST-T1024 & WEB2 — THE ROUTING RULE
+
+When the tiles, when the web, when both, when neither. And how the web is reached.
+
+The second paper states the decision procedure. Three tiers ordered by attestation: ROM, SRAM, live. Four cases: tiles only, web only, both, neither. And the distinction that carries the series: A_FETCH is the courier — a declared action with a signed-source envelope and an attestation gate, whose content becomes attested before it reaches the tile. The live tier is the labeled guest — a separate path, labeled, timestamped, that never enters the certified domain.
+
+One fetches and attests. The other fetches and labels. Neither is a browser.
+
+Function in the series: converts the principle into a procedure the system can execute.
+
+ST-T1024 & WEB3 — THE COMBINER
+
+What happens when more than one source comes back.
+
+The third paper answers a question the first two raise and do not resolve. When a query returns multiple sources, the system must combine them — and combination is not rendering. No second transformer. The TinyTransformer sits at render, after commit, and has no criterion. Combining sources is selection, and selection requires a criterion.
+
+The combiner is deterministic code with a declared merge rule: field merge, priority merge, template merge. The reduction pipeline: filter by envelope, rank by signed priority, deduplicate by content hash, merge by rule. And the conflict rule that differs between domains: the certified path refuses on conflict; the live tier presents it.
+
+Function in the series: specifies the operation between fetching and answering.
+
+ST-T1024 & WEB4 — THE SOURCE REGISTRY
+
+Who attests a website, and what the signature covers.
+
+The fourth paper addresses the trust root for the web. A_FETCH assumes a declared source list. It never says how a source gets on it. Who attests a publisher? Is the signature over the domain, the URL, or the content? How is the list versioned, revoked, and deprecated? Who signs it, and what are they liable for?
+
+Function in the series: supplies the institutional mechanism that A_FETCH depends on.
+
+ST-T1024 & WEB5 — THE STALE QUESTION
+
+How long a fetched fact stays good.
+
+The fifth paper addresses time. A fetched fact carries a timestamp. Nothing in the earlier papers says when that timestamp makes the fact unusable. How long is a price good for? A headline? A regulatory filing? The answer is domain-specific, declared per tile, signed and versioned — and there is a refusal code that fires when a fetched fact is too old to serve.
+
+Function in the series: prevents the live tier from serving yesterday's news as today's.
+
+ST-T1024 & WEB6 — THE ADVERSARIAL WEB
+
+What happens when the source is hostile.
+
+The sixth paper addresses the threat the attestation gate does not cover. The gate catches tampering in transit. It does not catch a source that is malicious by design. Poisoned content, SEO manipulation, pages that target the fetcher rather than the reader, content that changes between fetch and attestation.
+
+The answer is not a better classifier. It is a threat model, a declared trust hierarchy, and a refusal path for sources that fail it.
+
+Function in the series: states the security model the earlier papers assume but do not specify.
+
+ST-T1024 & WEB7 — THE LIVE TIER AT SCALE
+
+Forty sources per query, trillions of queries, every fetch traced.
+
+The seventh paper addresses the engineering problem. The trace is the record and the record is the product. At web scale, the trace is a storage and cost problem. How long is a live-tier trace retained? What is stored — the hash, the content, both? Who pays for the fetch and the storage? What does the citizen see when the trace is too large to display?
+
+Function in the series: makes the architecture operable at the scale the citizen market requires.
+
+---
+
+WHAT THE SERIES CLAIMS
+
+First — the tension is real. A bounded architecture cannot browse, and a bounded architecture that cannot reach the web has a ceiling. Neither horn is acceptable.
+
+Second — the tension is resolvable. Two mechanisms, not one. A_FETCH for attested sources, whose content becomes signed. The live tier for unattestable sources, whose content is labeled. Neither is a browser.
+
+Third — the resolution has a cost. The system is slower, narrower, and requires an operator. The cost is real, and the series states it in every paper.
+
+Fourth — the cost is acceptable for the markets the architecture serves. The four certified industries cannot tolerate the hallucination risk. The citizen lambda, for the questions that matter, cannot either. The series serves those markets, not the market that wants speed above all.
+
+Fifth — every mechanism is checkable. The merge rule is signed. The source list is signed. The timestamp is recorded. The trace is the record. A regulator can audit the system. A citizen can ask why.
+
+---
+
+WHAT THE SERIES DOES NOT CLAIM
+
+It does not claim the live tier is trustworthy. A fetched fact is not an attested fact. The live tier labels; it does not attest.
+
+It does not claim the system is fast. The courier is slower than a browser. The attestation gate adds latency. The series states the cost.
+
+It does not claim the source list is easy to maintain. It is a signed artifact, and it requires a signer. Signer throughput is the residual the white paper names in §12.7.
+
+It does not claim the architecture competes with the frontier on the frontier's terms. It serves a different market — the market that needs accountability and will accept the speed cost.
+
+It does not claim the certified domain can use the live tier. It cannot. The certified domain uses ROM and SRAM only.
+
+It does not claim all seven papers are written. Two are drafted in full. One is a sketch. Four are outlined and unwritten.
+
+It does not claim any of them is published. No DOI exists for any paper in this series.
+
+---
+
+WHAT WOULD FALSIFY THE SERIES
+
+First — the tension is not real. If a bounded architecture can be shown to have no ceiling without web access — that is, if the tiles alone can serve every query a citizen will ask — the series is unnecessary.
+
+Second — a browser can be bounded. If a browser can be shown to produce attested inputs — if fetched content can be signed by a source the system trusts, at the cadence the web changes — WEB1 is refuted.
+
+Third — the two mechanisms are the same. If A_FETCH and the live tier can be shown to be one mechanism with two labels, WEB2 is refuted.
+
+Fourth — the combiner can be a transformer. If a model can be shown to combine multiple sources without a criterion — if selection without a specification is possible — WEB3 is refuted. This is the same falsifier the corpus applies to the creativity claim.
+
+Fifth — the trust root can be internal. If a source list can be maintained without a named signer, WEB4 is refuted.
+
+Sixth — staleness does not matter. If a fetched fact can be shown to remain usable indefinitely, WEB5 is refuted.
+
+Seventh — the adversarial web is not adversarial. If fetched content can be shown to pose no threat beyond tampering in transit, WEB6 is refuted.
+
+Eighth — scale is not a problem. If the trace can be shown to be storable and displayable at web scale without a new mechanism, WEB7 is refuted.
+
+The series is falsifiable at eight points. Any one of them refutes a paper. Any three refute the premise.
+
+---
+
+RESIDUALS
+
+The series is incomplete. Two papers drafted, one sketched, four outlined. The premise is stated; the resolution is not finished.
+
+The series is unpublished. No DOI exists. Nothing in this series has been posted to Zenodo or anywhere else.
+
+The markets are unmeasured. The claim that a market exists for a slower, narrower, accountable product is a thesis, not a measurement.
+
+The trust root is the critical path. Every paper in the series depends on a named authority willing to sign a source list. That authority does not exist.
+
+The architecture is not deployed. No system runs these mechanisms at scale. The reference implementation is a single tile.
+
+The honest one. The author does not know whether the series resolves the tension, whether the trust root can be formed, whether the citizen will accept a labeled answer over a fluent one, or whether the markets the series serves are large enough to sustain the architecture. The series states the challenge and the seven articles that answer it. It does not predict the adoption.
+
+---
+
+CLOSING
+
+A bounded architecture that cannot reach the web is a product with a ceiling. A bounded architecture that browses is no longer bounded.
+
+That is the challenge. Seven articles answer it.
+
+WEB1 states that the system fetches rather than browses, and names the cost.
+
+WEB2 states the routing rule, and the two mechanisms: the courier and the labeled guest.
+
+WEB3 states the combiner — deterministic, not a second transformer — and the conflict rule that differs between certified and live domains.
+
+WEB4 states the source registry: who attests a website, and what the signature covers.
+
+WEB5 states the stale question: how long a fetched fact stays good.
+
+WEB6 states the adversarial web: what happens when the source is hostile.
+
+WEB7 states the live tier at scale: the trace, the storage, and the cost.
+
+None is a browser. All are bounded. Each answers a question the previous one raises.
+
+The courier fetches and attests. The guest fetches and labels. The combiner executes a signed rule. The tiles answer what is signed. The system refuses when none applies.
+
+That is the series. It is not finished. It is stated.
+
+---
+
+M. Taalabi
+Independent Researcher
+Maintainer, ST-T1024 Standard
+actu.ing@gmail.com
+
+---
+
+REFERENCES
+
+A. The series
+
+1. ST-T1024 & WEB1 — THE COURIER, NOT THE BROWSER. (Drafted, unpublished.)
+2. ST-T1024 & WEB2 — THE ROUTING RULE. (Drafted, unpublished.)
+3. ST-T1024 & WEB3 — THE COMBINER. (Sketched, unpublished.)
+4. ST-T1024 & WEB4 — THE SOURCE REGISTRY. (Outlined, unwritten.)
+5. ST-T1024 & WEB5 — THE STALE QUESTION. (Outlined, unwritten.)
+6. ST-T1024 & WEB6 — THE ADVERSARIAL WEB. (Outlined, unwritten.)
+7. ST-T1024 & WEB7 — THE LIVE TIER AT SCALE. (Outlined, unwritten.)
+
+B. The parent series
+
+8. AGENTIC ST-T1024: THE VERIFIABLE AGENCY THEOREM. GitHub, 2026. A1–A16.
+9. AGENTIC ST-T1024. A15: REFUSAL AS WIRE PROTOCOL. GitHub, 2026.
+10. AGENTIC ST-T1024. A16: CROSS-ORGANIZATIONAL TRACE LEDGER. GitHub, 2026.
+
+C. The architecture
+
+11. ST-T1024 — Standard for Embedded LLM: White Paper V2. Zenodo, October 2026. DOI 10.5281/zenodo.23102533. §6 (knowledge layer), §7 (update protocol), §12.7 (signer throughput).
+12. ST-T1024 — FIRST ARTIFACT. Zenodo, September 2026. DOI 10.5281/zenodo.22847497.
+13. THE COMPILER AND THE SIGNER. Zenodo, October 2026. DOI 10.5281/zenodo.23767809.
+14. A GIFT AND A WARNING. Zenodo, October 2026. DOI 10.5281/zenodo.23779515.
+
+D. The provenance and the tiers
+
+15. THE PROVENANCE WALL. Zenodo, October 2026. DOI 10.5281/zenodo.23718848.
+16. OPAQUE AND UNBOUNDED. Zenodo, October 2026. DOI 10.5281/zenodo.23743381.
+17. WELL-HARNESSED CONSCIOUSNESS. Zenodo, October 2026. DOI 10.5281/zenodo.23509468.
+18. STOCHASTIC AI CANNOT BE SAFE. Zenodo, October 2026. DOI 10.5281/zenodo.23346820.
+
+E. The norms
+
+19. ISO 26262:2018; IEC 61508:2010; RTCA DO-178C; IEC 62443; IEC 62304:2006.
+
+F. Deliberately not cited
+
+· Any claim that the series is complete. §RESIDUALS states that four papers are outlined and unwritten.
+· Any claim that any paper in the series is published. No DOI exists for any of the seven.
+· The markets as measured. The claim that a market exists for a slower, narrower, accountable product is a thesis.
+· The metrics figures (3.7 µJ, 680 ns). Emulation-derived. Where referenced in the corpus, they are labeled as targets, not measurements.
+
+---
+
+This preamble states a challenge and the seven articles that answer it. It does not claim the answer is complete or published. The reader may draw their own conclusion.
+
+A bounded architecture cannot browse. A bounded architecture that cannot reach the web has a ceiling. Seven articles answer the tension. Two are drafted. None is published.
+
+
