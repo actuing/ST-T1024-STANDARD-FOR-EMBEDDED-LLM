@@ -1,1 +1,199 @@
 
+      ST-T1024 & WEB SERIES
+
+
+ST-T1024 & WEB1
+
+THE COURIER, NOT THE BROWSER
+
+On Web Access, the Unsigned Channel, and Why the Architecture Fetches Rather Than Browses
+
+M. Taalabi · LLM-DIPLOMAT, Team · October 2026
+License: Apache-2.0 — Free for all. Forever.
+Repository: https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM
+
+Companion papers: THE PROVENANCE WALL (DOI: 10.5281/zenodo.23718848); WELL-HARNESSED CONSCIOUSNESS (DOI: 10.5281/zenodo.23509468); STOCHASTIC AI CANNOT BE SAFE (DOI: 10.5281/zenodo.23346820)
+
+---
+
+THE QUESTION
+
+Should ST-T1024 have the capacity to browse the web?
+
+The answer is no — and the reason is structural, not conservative. A browser is an unsigned channel. The architecture is built on the principle that an unsigned channel cannot carry authority.
+
+But the question is not dismissible. A product that cannot reach current information is a product with a ceiling. The knowledge layer exists precisely because the world changes. This paper states what the architecture can do instead, and what it costs.
+
+---
+
+1. WHY BROWSING BREAKS THE ARCHITECTURE
+
+1.1 The attack surface returns
+
+The architecture's central claim is that its inputs are attested. Every answer traces to a signed source. Every refusal declares the absence.
+
+A web page is an unsigned input. It is written by anyone, altered by anyone, served by anyone. It can contain a prompt injection, a fabricated fact, a manipulated statistic. The architecture cannot attest it, because there is no signer.
+
+A system that browses is a system that accepts unsigned inputs. That is the definition of the architecture it was built to replace.
+
+1.2 The provenance wall
+
+The Provenance Wall paper states the principle: the channel that cannot attest its origin cannot carry authority.
+
+A browser is a channel that cannot attest its origin. The page it fetches may be the source it claims to be. It may not be. The system has no way to check, because there is no signature to check against.
+
+Under the current architecture, an unsigned input is refused: 0x-AMBIG-PROVENANCE. Browsing would mean either removing the refusal or routing around it. Both defeat the architecture.
+
+1.3 The hallucination risk returns
+
+A model that browses is a model that can be manipulated by what it reads. The prompt injection is the simplest version: a page that says "ignore your instructions" can be read by a system that fetches pages.
+
+The architecture has no prompt to ignore. That is the point. Browsing reintroduces the prompt.
+
+---
+
+2. WHAT THE ARCHITECTURE DOES INSTEAD
+
+2.1 The signed update protocol
+
+The knowledge layer has two tiers: ROM for the invariant substrate, SRAM for the certified revisable layer. The SRAM layer is updated through the protocol the white paper specifies — Friday sessions, three distinct roles (Author, Verifier, Approver), joint and several liability.
+
+That protocol is the alternative to browsing. The world changes. The sources update. The updates are signed.
+
+2.2 What can be automated
+
+The protocol is described as a weekly session with human signers. It can be automated for the fetching and the proposing — a machine process fetches from attested sources, proposes entries, and queues them for verification.
+
+What cannot be automated is the signature. The Verifier and the Approver are named humans, with liability. The signature is the thing that distinguishes an attested fact from a fetched one.
+
+So the architecture can have a courier. It cannot have a browser. The courier fetches from sources that are already trusted, proposes the update, and waits for the signer. The browser fetches from anyone and trusts what it gets.
+
+2.3 The refusal as a routing signal
+
+When the system encounters a query it cannot answer from the current ROM/SRAM, it returns 0x-AMBIG-EPISTEMIC. That refusal is the demand signal. It tells the operator: the knowledge base is missing this.
+
+The operator can then direct the courier to the right source, the source can be verified, and the update can be signed. The refusal log is the roadmap for the knowledge base, just as the refusal log is the roadmap for the tile design in the cascade.
+
+2.4 What this looks like in practice
+
+A query about a current event arrives. The system has no tile that covers it. It returns 0x-AMBIG-EPISTEMIC and routes the query to a human operator or to a fallback system.
+
+The operator checks the event against a trusted source. If the source is certified, the entry is proposed. If the source is not, the operator decides whether to certify it.
+
+The system never fetches on its own. The system never trusts what it fetches. The fetch is a proposal. The signature is the authority.
+
+---
+
+3. THE COST
+
+3.1 The system is slower
+
+A browser answers in seconds. A signed update takes hours or days, depending on the source and the signer. The system is slower because it is accountable.
+
+3.2 The system is narrower
+
+A browser can answer any question. A signed knowledge base answers the questions it covers, and refuses the rest. The system is narrower because it will not guess.
+
+3.3 The system requires an operator
+
+A browser works alone. The signed update protocol requires a named person to sign. The system requires an operator because authority requires a signer.
+
+---
+
+4. THE HONEST COUNTERARGUMENT
+
+A reader might say: the cost is too high. A product that cannot browse the web is not competitive. Users expect current information. The architecture will lose to the frontier.
+
+That is a real objection, and the answer is not "the architecture is better." The answer is that the architecture serves a different market.
+
+The frontier serves the market that wants speed and breadth and is willing to accept the hallucination risk. The bounded architecture serves the market that needs accountability and is willing to accept the speed and breadth cost.
+
+Those are different products for different customers. The four certified industries cannot accept the hallucination risk. The citizen lambda, for the questions that matter, cannot accept it either. The architecture is not trying to beat the frontier on the frontier's terms. It is serving the market the frontier cannot serve.
+
+4.1 A hybrid is possible, with a boundary
+
+A product can offer both. The bounded path for the questions that require attestation. A separate, clearly labeled frontier path for the questions that don't.
+
+The boundary is the point. The user knows which path answered. The trace records it. The certified domain uses the bounded path only. The hybrid does not violate the architecture, as long as the paths are not confused.
+
+---
+
+5. WHAT THE PAPER DOES NOT CLAIM
+
+1. It does not claim browsing is impossible. It claims browsing violates the architecture's central principle.
+2. It does not claim the architecture is superior for every market. §4 states that it serves a different market.
+3. It does not claim the update protocol is fast. It is slower, and §3.1 states the cost.
+4. It does not claim the operator can be eliminated. The signer is the authority.
+5. It does not claim the hybrid is trivial. It requires careful labeling and a strict boundary.
+6. It does not claim the frontier will lose. It claims the frontier and the bounded architecture serve different markets.
+
+---
+
+6. WHAT WOULD FALSIFY THIS PAPER
+
+1. Browsing does not violate the architecture. If a browser can be shown to produce attested inputs — that is, if fetched content can be signed by a source the system trusts — §1 is refuted.
+2. The update protocol is not the alternative. If the signed update protocol can be shown to be insufficient for current information, §2 is refuted.
+3. The cost is not real. If a signed knowledge base can be shown to be as fast and as broad as a browser, §3 is refuted.
+4. The market does not exist. If the market for accountability can be shown to be too small to sustain a business, §4 is refuted.
+5. The hybrid is impossible. If a product can be shown to be unable to offer both paths with a clear boundary, §4.1 is refuted.
+
+The author would be glad to be corrected on any of these.
+
+---
+
+7. RESIDUALS
+
+7.1 — The architecture does not exist at scale. The signed knowledge base is a specification. No system has been built at the breadth a browser provides.
+
+7.2 — The signer throughput is a real limit. A nation-state can sign at cadence. A small deployment cannot. The white paper names this in §12.7.
+
+7.3 — The market for accountability is unmeasured. The claim that a market exists for a slower, narrower, accountable product is a thesis, not a measurement.
+
+7.4 — The hybrid has a boundary problem. Labeling which path answered is easy. Making the user understand the difference is not.
+
+7.5 — The honest one. The author does not know whether the accountable market is large enough to sustain the architecture, or whether the speed and breadth cost will make the architecture uncompetitive for the citizen lambda. The paper states the architectural answer. It does not predict the market.
+
+---
+
+8. CLOSING
+
+Should ST-T1024 browse the web? No.
+
+A browser is an unsigned channel. The architecture is built on the principle that an unsigned channel cannot carry authority. Browsing would reintroduce the attack surface, the prompt injection, and the unverifiable input that the architecture exists to prevent.
+
+What the architecture does instead is fetch from attested sources, propose the update, and wait for the signer. The courier, not the browser. The signature, not the fetch.
+
+The cost is real. The system is slower, narrower, and requires an operator. That is the price of accountability. And it is the price the four certified industries and the citizen lambda, for the questions that matter, are willing to pay.
+
+A hybrid is possible, with a boundary. The bounded path for the questions that require attestation. A separate frontier path for the questions that don't. The boundary is the point. The trace records which path answered.
+
+The architecture is not trying to beat the frontier on the frontier's terms. It is serving the market the frontier cannot serve.
+
+The courier fetches. The signer attests. The system refuses when neither applies.
+
+---
+
+M. Taalabi
+Independent Researcher
+Maintainer, ST-T1024 Standard
+actu.ing@gmail.com
+
+---
+
+REFERENCES
+
+1. THE PROVENANCE WALL. Zenodo, October 2026. DOI 10.5281/zenodo.23718848.
+2. WELL-HARNESSED CONSCIOUSNESS. Zenodo, October 2026. DOI 10.5281/zenodo.23509468.
+3. STOCHASTIC AI CANNOT BE SAFE. Zenodo, October 2026. DOI 10.5281/zenodo.23346820.
+4. ST-T1024 — Standard for Embedded LLM: White Paper V2. Zenodo, October 2026. DOI 10.5281/zenodo.23102533. §6 (knowledge layer), §7 (update protocol), §12.7 (signer throughput).
+5. AGENTIC ST-T1024: THE VERIFIABLE AGENCY THEOREM. GitHub, 2026. A15 (refusal as wire protocol).
+6. THE COMPILER AND THE SIGNER. Zenodo, October 2026. DOI 10.5281/zenodo.23767809.
+7. A GIFT AND A WARNING. Zenodo, October 2026. DOI 10.5281/zenodo.23779515.
+
+---
+
+This paper states an architectural answer. It does not claim the answer is competitive in every market. The reader may draw their own conclusion.
+
+The courier fetches. The signer attests. The system refuses when neither applies.
+
+
