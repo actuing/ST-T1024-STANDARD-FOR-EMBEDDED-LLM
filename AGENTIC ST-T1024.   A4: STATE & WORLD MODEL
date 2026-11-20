@@ -1,1 +1,319 @@
 
+
+
+
+
+
+
+AGENTIC ST-T1024
+A4: STATE & WORLD MODEL
+The Load-Bearing Premise
+---
+Version: 1.0 (Draft)
+Date: September 2026
+Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT)
+License: Apache 2.0
+Parent Spec: ST-T1024-A0 (Agentic Extension Overview)
+Status: Specification. Not yet implemented. Not yet verified.
+Purpose: Define the state representation and world interface that the agentic extension
+requires.
+—
+Prerequisites:
+EXTENDING ST-T1024 TO BE AGENTIC: SAFETY AS GUARANTEE
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM/blob/main/
+A0%3A%20%20AGENTIC%20%20ST-T1024
+AGENTIC ST-T1024: THE VERIFIABLE AGENCY THEOREM
+https://github.com/actuing/ST-T1024-STANDARD-FOR-EMBEDDED-LLM/blob/main/
+AGENTIC%20ST-
+T1024%3A%20THE%20VERIFIABLE%20AGENCY%20THEOREM
+—
+ABSTRACT
+The Verifiable Agency Theorem assumes a finite state space S and a finite input alphabet Σ.
+Neither is specified in A0. This document specifies them.
+Without A4, VERIFY has nothing to verify. Preconditions are predicates over state; if state is
+undefined, preconditions are undefined. The append-only log has nothing to record. The plan library has no world to plan against. A4 is the premise the entire agentic architecture
+rests on.
+This document defines:
+1. The state schema — what a state is, how it is structured, why it is finite.
+2. The world model — how external reality maps into internal state.
+3. The sensor interface — how inputs are quantized and delivered.
+4. The transition function — how state changes deterministically.
+5. The state access protocol — how tiles read and write state.
+6. The invariant set — what must always hold.
+Every definition is anchored to a requirement of the Verifiable Agency Theorem. Every
+constraint is a design decision, not an empirical observation.
+Status: This is a specification. No reference implementation exists. No hardware validation
+exists.
+---
+1. INTRODUCTION: WHY STATE COMES FIRST
+1.1 The Dependency Chain
+Every component of the agentic extension depends on state:
+```
+State (A4)
+├── VERIFY (A5) — preconditions are predicates over state
+├── Plans (A3) — plans read and write state
+├── Actions (A2) — action effects are state changes
+├── Invocation (A6) — context hash is a state projection
+├── Memory (A7) — log entries record state deltas
+└── Composition (A8) — sub-task sequencing depends on state
+```
+Remove A4 and every other sub-spec becomes undefined. State is the premise.
+1.2 The Two Constraints
+The Verifiable Agency Theorem requires:
+· Finiteness — |S| < ∞ (Theorem 1 depends on this).
+· Determinism — δ : S × Σ → S is a function, not a relation (Corollary 5 depends on this).
+A4 must deliver both. Not by hoping reality is finite, but by constructing a finite representation
+of reality. This is the architectural move that makes verification possible. 1.3 The Design Principle
+The state is not the world. The state is a finite, quantized, deterministic projection of the
+world — sufficient for the agent's declared task domain, and no larger.
+This is what safety-critical systems already do. A flight controller does not model the
+universe. It models airspeed, altitude, attitude, and a bounded set of environmental inputs —
+quantized to the precision required for certified control. A4 generalizes this discipline.
+---
+2. STATE SCHEMA
+2.1 Definition
+Definition 1 (State). A state s ∈ S is a tuple:
+```
+s = ⟨ s_mode, s_ctx, s_world, s_mem, s_meta ⟩
+```
+where:
+Component Description Bound
+s_mode FSM state (IDLE, PLAN, EXECUTE, VERIFY, …) \|M\| states, M finite
+s_ctx Active tile context (which tile, which task) \|T\| × \|TaskID\|
+s_world Quantized world model (sensor state) product of sensor domains
+s_mem Bounded SRAM window (recent history) W entries
+s_meta Metadata (cycle counter, task ID, flags) bounded integers
+Every component is drawn from a finite domain. Their product is S.
+2.2 Finiteness Argument
+Proposition. |S| < ∞.
+Proof. Each component has a finite domain:
+· s_mode — finite by A1 (FSM has finitely many states).
+· s_ctx — finite by A6 (finite tile set, finite task ID space).
+· s_world — finite by §3 (sensors are quantized).
+· s_mem — finite by A7 (bounded window W).
+· s_meta — finite by bounded integer ranges.
+The Cartesian product of finite sets is finite. □
+Note: |S| is finite but may be very large. The theorem claims finiteness; model-checking uses
+symbolic methods. 2.3 The State is Total
+Every field is always defined. There is no "null" state, no "unknown" state, no partial state. If
+a sensor fails, the failure is a value in the domain (SENSOR_FAULT), not an absence. This
+is the "no-hallucination" principle applied to state: the agent cannot be uncertain about its
+own state, because uncertainty is not representable.
+---
+3. WORLD MODEL
+3.1 Definition
+Definition 2 (World Model). The world model s_world is a tuple of quantized sensor readings:
+```
+s_world = ⟨ r_1, r_2, …, r_n ⟩
+```
+where each r_i ∈ D_i is a value drawn from a finite domain D_i.
+3.2 Sensor Quantization
+Each sensor i has a declared schema:
+Field Meaning Example (automotive brake sensor)
+id Sensor identifier BRAKE_PRESSURE
+domain Finite value set {0, 1, …, 255} (pressure in kPa/10)
+rate Max update rate 100 Hz
+latency Max delivery latency 1 ms
+fault_value Value on failure 0xFF
+Rule: No sensor enters the agent's world model without a declared schema. Sensors without
+schemas are not admitted. This is the boundary between the world and the agent.
+3.3 The Finiteness Guarantee
+Proposition. |s_world| < ∞.
+Proof. Each D_i is finite by declaration. The product of finitely many finite sets is finite. □
+Design constraint: the number of sensors n is finite and declared. No dynamic sensor
+discovery. This is what makes s_world finite at design time.
+3.4 Fault Handling
+Sensor faults are first-class values in the domain, not exceptions. When a sensor fails: · Its value transitions to fault_value.
+· The state remains total.
+· Downstream logic treats the fault as a value, not an error.
+This preserves determinism: the same fault always produces the same state.
+---
+4. SENSOR INTERFACE
+4.1 The Input Alphabet Σ
+Definition 3 (Input Alphabet). Σ is the set of all distinguishable transitions the agent can
+observe:
+```
+Σ = { σ : σ is a valid sensor transition }
+```
+Since each sensor has finite domain D_i, and the transition is a change from one value to
+another, the total alphabet size is bounded by:
+```
+|Σ| ≤ ∏_i |D_i|²
+```
+This is finite but astronomical. In practice, the alphabet is restricted by:
+· Rate limits — only transitions within the sampling window count.
+· Relevance filters — only transitions relevant to active tiles are admitted.
+· Hysteresis — small changes below a declared threshold are ignored.
+These filters are declared per deployment, not per standard.
+4.2 The Sampling Discipline
+Rule: sensors are sampled at declared rates. Sampling is synchronous with the FSM cycle.
+No asynchronous interrupts admit state changes.
+This is a departure from typical real-time design, and it is deliberate. Asynchronous inputs
+violate the determinism requirement of the FSM. By sampling synchronously, the state
+transition is always s' = δ(s, σ) where σ is the sampled input for that cycle. No race
+conditions. No nondeterministic interleaving.
+4.3 The Transition Function Definition 4 (Transition). δ : S × Σ → S. Given a state and a sampled input, the next state is
+uniquely determined.
+```
+s_{t+1} = δ(s_t, σ_t)
+```
+Properties:
+· Deterministic — δ is a function, not a relation.
+· Total — δ is defined for every (s, σ) ∈ S × Σ.
+· Bounded — every transition completes within the FSM cycle budget.
+These three properties are what the Verifiable Agency Theorem requires (Definition 5 in the
+proof).
+---
+5. STATE ACCESS PROTOCOL
+5.1 Read Access
+Tiles read state through a read-only projection. Each tile declares which fields it needs:
+```
+Tile_Read_Scope(tile_id) ⊆ {fields of S}
+```
+A tile cannot read fields outside its scope. This is the isolation property (A6) applied to state.
+5.2 Write Access
+Writes go through declared transitions. A tile cannot arbitrarily mutate state. Instead, it
+proposes a transition:
+```
+propose_transition : S × Tile → (S → S)
+```
+The VERIFY state (A5) checks the proposal against declared preconditions and envelope
+bounds. Only after PASS does the transition commit.
+Rule: no tile writes state directly. All writes are transitions mediated by VERIFY.
+5.3 The State Log
+Every committed transition is recorded in the append-only log (A7): ```
+Entry = ⟨ timestamp, prev_state_hash, transition_id, next_state_hash, signature ⟩
+```
+The log is the agent's complete history. It is auditable, reproducible, and signed.
+5.4 Context Hashing (for A6)
+For tile invocation, the invoker provides a context hash:
+```
+ctx_hash = H(s_world_projection, s_ctx, task_id)
+```
+where H is a deterministic hash function (e.g., SHA-256 or a ternary-compatible hash). The
+invoked tile recomputes the hash and verifies it matches. This is the invocation integrity
+check from A6.
+---
+6. INVARIANTS
+6.1 Definition
+Definition 5 (Invariant Set). I ⊆ S is the set of states the agent may occupy. Every state
+transition must preserve I:
+```
+∀ s ∈ I, σ ∈ Σ : δ(s, σ) ∈ I
+```
+6.2 The Invariant Catalog
+Each deployment declares its invariant set. Examples:
+Invariant Domain Meaning
+I_safe Automotive Brake pressure never exceeds safe bounds
+I_bounded All Cycle counter never exceeds T_max
+I_no_overflow All All integer fields stay in declared ranges
+I_envelope All No action is committed outside its envelope
+Rule: invariants are declared in ROM and checked by VERIFY. A transition that violates an
+invariant is refused with 0x-UNSAFE-ACT.
+6.3 Invariant Verification
+The invariant set I is finite (subset of finite S). Therefore I can be exhaustively verified by
+finite model-checking. This is Corollary 2 of the Verifiable Agency Theorem, applied to state. 7. STATE AND THE THREE FIXES
+Fix How A4 Contributes
+Fix 1 (Architecture) A4 fixes the shape of state. Two engineers following A4 produce
+structurally identical state models.
+Fix 2 (Behavior) A4 leaves the content of D_i, invariants, and sensor schemas to
+deployment. Different domains, same grammar.
+Fix 3 (Safety) A4 makes state finite and deterministic. Without this, the Verifiable Agency
+Theorem cannot be established. A4 is a necessary condition for Fix 3.
+---
+8. WHAT A4 DOES NOT SPECIFY
+Honest labeling.
+Item Status
+Concrete sensor schemas for each domain Deployment responsibility
+Concrete invariant sets Deployment responsibility
+The hash function H Implementation choice (SHA-256 or ternary-compatible equivalent)
+The exact size of the SRAM window W Deployment-tunable, bounded
+The rate limits and relevance filters Deployment-tunable
+Machine-verified TLA+ state model Pending
+Reference implementation Not yet
+A4 specifies the form. Deployment specifies the content. This is the standard/deployment
+split, made explicit.
+---
+9. TLA+ SKELETON
+```tla
+--------------------------- MODULE STT1024_A4_State ---------------------------
+EXTENDS Naturals, FiniteSets, Sequences
+CONSTANTS
+M, \* FSM state set (finite)
+T, \* Tile identifier set (finite)
+TaskID, \* Task identifier space (finite)
+Sensors, \* Sensor schema set (finite)
+Domain, \* Sensor → finite domain
+W, \* SRAM window size (bounded)
+MaxCycle, \* Maximum cycle count
+Inv \* Invariant set ⊆ S State == [
+mode : M,
+ctx : T × TaskID,
+world : [s \in Sensors |-> Domain[s]],
+mem : Seq(W),
+meta : [cycle : 0..MaxCycle, task : TaskID]
+]
+Sigma == \* Valid input alphabet (bounded by sensor transitions)
+{ sigma \in [Sensors -> UNION_{s \in Sensors} Domain[s]] :
+\A s \in Sensors : sigma[s] \in Domain[s] }
+delta == \* Deterministic transition (deployment-supplied)
+CHOOSE f \in [State × Sigma -> State] : TRUE
+Invariant_Holds(s) == s \in Inv
+Preservation ==
+\A s \in Inv, sigma \in Sigma :
+Invariant_Holds(delta[s, sigma])
+======================================================================
+=======
+```
+The theorem Preservation is what needs to be model-checked: every transition from an
+invariant state leads to an invariant state.
+---
+10. CONCLUSION
+A4 defines the state representation and world interface that the agentic extension requires.
+Without it, the Verifiable Agency Theorem has no premises, VERIFY has no object, and the
+append-only log has no content.
+The three commitments:
+1. State is finite. By construction, not by hope.
+2. State is deterministic. Transitions are functions, not relations.
+3. State is total. Faults are values, not absences.
+These commitments are what make the rest of the agentic extension possible. A3 (plan
+representation) sits on top of A4. A5 (VERIFY) checks predicates over A4 state. A7
+(memory) logs A4 transitions.
+A4 is the foundation. Everything else is downstream. APPENDIX A — Plain Language
+What is the state of an AI agent?
+Everything it knows about itself and the world, right now, in one place.
+Why does it have to be finite?
+So you can prove what it will do next.
+How do you make it finite?
+You quantize the world. Sensors have a fixed set of values. Numbers have bounds. Nothing
+is infinite.
+But the world is infinite.
+The world is. The agent's model of the world is not. The model is a finite projection —
+enough for the task, and no more.
+Is that safe?
+Yes — because the model is what the agent acts on. If the model is finite and the transitions
+are deterministic, the agent's behavior is provable.
+And the guarantee?
+The agent cannot be uncertain about its own state. Uncertainty is not representable.
+What is this called?
+A4 — the state and world model.
+---
+APPENDIX B — Status Summary
+Artifact Status
+A4 specification (this document) Drafted
+Concrete sensor schemas Deployment responsibility
+Concrete invariant sets Deployment responsibility
+TLA+ state model Skeleton only
+TLA+ preservation proof Not yet
+Reference implementation Not yet
+Hardware validation Not yet
+---
+License: Apache-2.0. Free for all. Forever.
+---
+
+
+
+END OF A4
+
+
+---
