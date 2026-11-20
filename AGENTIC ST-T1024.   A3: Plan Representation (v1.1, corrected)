@@ -1,1 +1,465 @@
 
+
+
+
+
+
+
+A3: Plan Representation (v1.1, corrected)
+Agentic ST-T1024. The second load-bearing premise.
+Version: 1.1 (Draft). Supersedes 1.0. Date: November 2026 Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT) License: Apache-2.0 Parent spec: ST-T1024-A0 (Agentic Extension Overview) Dependencies: A2 (action library), A4 (state and world model) Status: Specification. Not yet implemented. The TLA+ skeleton has not yet been model-checked. Purpose: Define the plan schema that DECOMPOSE produces and EXECUTE consumes, and the checks that admit a plan to the library.
+
+
+
+Abstract
+A0 specifies that an agentic ST-T1024 decomposes goals into sub-tasks via a ROM-burned plan library. A0 does not say what a plan is. This document does.
+Without A3, DECOMPOSE has no target, the plan library has no schema, and the bounded-plan hypothesis of the Verifiable Agency Theorem has no grounding. A3 defines:
+1.  The plan schema and its four step forms.
+2.  Three separate measures of a plan: size, worst-case executed actions, and worst-case cost.
+3.  The admission checks (ADM-1 to ADM-8) that every plan must pass before burn.
+4.  The plan library, its versioning, and an authority-preserving activation rule.
+5.  Deterministic plan lookup and tie-break.
+6.  DECOMPOSE and execution semantics.
+7.  Failure and rollback with a bounded retry budget.
+What changed from v1.0
+#
+v1.0
+v1.1
+1
+One undefined "length"
+K
+2
+DECOMPOSE bounded by K × D_invoke, looser than K
+Bound removed. Expansion is lazy, so memory is at most D_invoke frames
+3
+Composition used while_bounded, which had no step form
+LoopStep added to the grammar (§2.2)
+4
+Conditionals evaluated at DECOMPOSE time, against stale state
+Predicates are evaluated when the step is reached (§7)
+5
+B3 "proved" by saying burn rejects long plans
+Recast as admission checks ADM-1 to ADM-8, plus a proposition proved by induction (§5)
+6
+Tie-break preferred the newest signed version
+Versions resolved by the active pointer. Ties broken by cost, then id. Optional strict mode (§6)
+7
+A signed update could silently win
+Authority-preserving activation rule UPD-1 (§6.3)
+8
+Retry and rollback bound unclear
+Plan-level retry budget ρ, with cost bounded by (1 + ρ) × cost (§8)
+9
+TLA+ skeleton did not establish its theorem
+Rewritten with a flat node table, bounded recursion and a rank function (§11)
+10
+Theorem assumptions labelled A2, A3, A4, colliding with sub-spec names
+Renamed H1, H2, H3 (§1.2)
+Semantic plan verification (safety over all reachable runs) is still not specified. §9 says what that leaves open.
+1. Introduction: why plans come second
+1.1 The dependency chain
+State (A4) + Action Library (A2)
+        ↓
+   Plans (A3)
+    ├── DECOMPOSE (A1): plans become sub-task sequences
+    ├── Composition (A8): plans compose by declared rules
+    ├── Bounded execution: supports the Verifiable Agency Theorem
+    └── Log entries (A7): plan execution is logged
+A4 gives the agent a state. A2 gives it actions. A3 gives it sequences of actions that achieve goals. Without A3 the agent is a set of isolated actions.
+1.2 Hypotheses of the Verifiable Agency Theorem
+To avoid collision with the sub-spec names A2, A3 and A4, the theorem's hypotheses are named:
+Hypothesis
+Statement
+Supplied by
+H1
+The action library is finite, and each action has preconditions, effects, envelope and cost
+A2
+H2
+The plan library is finite, and every plan has bounded worst-case executed actions
+A3 (this document)
+H3
+The state space and input alphabet are finite, and the transition function is deterministic and total
+A4
+The Verifiable Agency Theorem document should adopt the same names.
+1.3 Design principle
+A plan is a finite, deterministic, acyclic structure of steps. Each step is an action from A2, a call to another plan in the library, a bounded conditional on state, or a bounded loop. Plans do not invent. They compose what already exists. The plan library is the agent's procedural ROM.
+
+
+2. Plan schema
+2.1 Definition 1 (Plan)
+A plan p ∈ P is a tuple:
+p = ⟨ id, goal_class, precondition, steps, postcondition, budget, retry_budget, version ⟩
+Field
+Type
+Description
+id
+PlanID
+Unique identifier (ROM-burned)
+goal_class
+GoalClass
+The class of goals the plan serves
+precondition
+Predicate over S (A4)
+Required starting state
+steps
+Sequence of Step
+Finite body of the plan
+postcondition
+Predicate over S (A4)
+Expected ending state
+budget
+cycles, energy
+Declared worst-case resource bound
+retry_budget (ρ)
+Nat, at most ρ_max
+Total re-attempts allowed per run (§8)
+version
+SemVer
+Plan version (for SRAM pointer updates)
+2.2 Definition 2 (Step)
+Step ::=
+  | ActionStep ⟨a ∈ A, params⟩
+  | PlanStep   ⟨q ∈ P, params⟩
+  | ConditionalStep ⟨π, then_steps, else_steps⟩
+  | LoopStep  ⟨π, max_n, body_steps⟩
+• π is a total, deterministic predicate over a declared read-only projection of S (A4 §5.1).
+• then_steps, else_steps and body_steps are finite step sequences.
+• max_n is a declared natural number, at least 1. A LoopStep repeats its body while π holds, at most max_n times.
+• A PlanStep invokes a plan by id. It does not inline the callee.
+• Params range over finite domains declared in the action's envelope (A2).
+2.3 Authoring operators
+The operators p1 ; p2 (sequence), if π then p1 else p2 (conditional) and while_bounded π max_n p (loop) are authoring-time syntax. They produce plans in the schema above. They do not exist at runtime. Runtime composition is forbidden. Every composed plan must pass admission (§5) as a plan in its own right.
+
+
+3. Measures of a plan
+v1.0 used one word, "length", for three different quantities. v1.1 separates them. Let steps(p) be the body of p, and let nodes in a branch or loop body count toward the enclosing plan.
+3.1 Size (what ROM stores)
+size counts nodes in the plan's own body. A PlanStep counts as one node and is not expanded.
+size(ActionStep)  = 1
+size(PlanStep)    = 1
+size(Conditional) = 1 + size(then_steps) + size(else_steps)
+size(Loop)        = 1 + size(body_steps)
+size(sequence)    = sum of its members
+3.2 Exec (worst-case executed actions in one run)
+exec(ActionStep)  = 1
+exec(PlanStep q)  = exec(steps(q))
+exec(Conditional) = max(exec(then_steps), exec(else_steps))
+exec(Loop)        = max_n × exec(body_steps)
+exec(sequence)    = sum of its members
+exec is an upper bound on the actions any single run executes, not the number a particular run does.
+3.3 Cost (worst-case cycles in one run)
+cost is defined exactly like exec, with cost(ActionStep a) = a.cost (A2) in place of 1.
+3.4 Invocation depth
+The invocation graph has an edge p → q whenever p contains a PlanStep naming q. Depth is the length of the longest path. Conditional and loop nesting depth within one body is counted separately.
+
+
+4. Standard constants
+Constant
+Meaning
+Recommended value
+K_size
+Max plan size
+64
+K_exec
+Max worst-case executed actions per run
+64
+D_cond
+Max conditional and loop nesting depth within a body
+4
+D_invoke
+Max PlanStep invocation depth
+3
+m
+Max plan library size
+4096
+budget_max
+Max task-level cycle budget
+10⁶
+ρ_max
+Max retry budget per plan run
+3
+These are standard constants. Deployments may tighten them and may not loosen them. Loosening voids the hypotheses of the Verifiable Agency Theorem.
+
+
+5. Admission: the burn-time checks
+A plan enters the library only if it passes all of the following. The checks are structural and mechanical.
+Check
+Requirement
+ADM-1
+Well-formed: the plan fits the grammar of §2, and every id, predicate and parameter resolves
+ADM-2
+Invocation graph is acyclic with depth at most D_invoke (equivalently, a rank function exists, see §11)
+ADM-3
+Conditional and loop nesting depth at most D_cond
+ADM-4
+size(p) ≤ K_size
+ADM-5
+exec(p) ≤ K_exec
+ADM-6
+(1 + ρ(p)) × cost(p) ≤ budget(p) ≤ budget_max, and ρ(p) ≤ ρ_max
+ADM-7
+Every ActionStep names an action in A, with params inside that action's declared envelope
+ADM-8
+The plan's canonical encoding carries a valid SK-1024 signature, and its hash is recorded
+The verifier that runs these checks is part of the trusted base. It must be deterministic. At the Friday session it is run by the Verifier role (White Paper §7.1) and independently re-run by the Approver.
+5.1 Proposition (bounded execution)
+Let P be a library whose invocation graph is acyclic. Then size, exec and cost are well-defined finite natural numbers for every plan in P. If every plan passes ADM-1 to ADM-8, then:
+1.  Any single run of any plan executes at most K_exec ActionSteps.
+2.  Any single run consumes at most budget(p) cycles, retries included (§8).
+Proof. Order plans by the rank function of ADM-2. A plan of rank 0 contains no PlanSteps. Its body is a finite tree, so the recursions of §3 terminate on it by structural induction. A plan of rank r contains PlanSteps only to plans of lower rank, whose measures are already finite numbers by the induction hypothesis. The same structural recursion therefore terminates. For the bound, a run is a path through the body tree in which each ConditionalStep takes one branch and each LoopStep iterates at most max_n times. Each executed ActionStep is counted by exec: a conditional contributes the larger branch, a loop contributes max_n copies of its body, a sequence contributes the sum. So exec(p) is at least the number of ActionSteps executed in any run. ADM-5 gives exec(p) ≤ K_exec. The cost argument is identical, with ADM-6 for the retry factor. □
+This is a proposition about admitted plans. It is only as strong as the admission check itself.
+
+
+6. The plan library
+6.1 Definition 3 (Plan library)
+P is the ROM-burned set of plans, with m ≤ the standard maximum.
+Property
+Meaning
+Finite
+The number of plans is at most m
+Indexed
+Plans are indexed by goal_class for lookup. Preconditions are evaluated, not indexed
+Immutable bodies
+Plan bodies are ROM-burned. Only version pointers move (SRAM)
+Versioned
+A plan id may have several versions. One pointer selects the active version
+Signed
+Every version carries an SK-1024 signature over its canonical encoding
+6.2 Plan lookup
+Given a goal class g from GOAL_PARSE and current state s:
+candidates = { p in P : goal_class(p) = g and precondition_p(s) holds }
+• candidates is empty: return 0x-AMBIG-GOAL.
+• candidates has one member: select it.
+• candidates has several members: apply the tie-break.
+The lookup considers only the active version of each plan id. Versions are resolved by the pointer, never by comparing versions across plans.
+Tie-break. Among candidates with distinct ids, select by (cost ascending, id ascending). The order is total, so the same input always selects the same plan.
+Strict mode. A deployment may declare strict mode, in which several candidates also return 0x-AMBIG-GOAL. Strict mode is the more conservative setting.
+6.3 Activation rule UPD-1 (authority-preserving update)
+The active-version pointer of plan p may move from version v to version v' only if all of the following hold:
+1.  v' passes ADM-1 to ADM-8.
+2.  v' is signed through the update protocol (White Paper §7).
+3.  The set of actions reachable from v' is a subset of those reachable from v, and goal_class is unchanged.
+A version that adds an action or changes goal_class may be activated only after the Agent Certificate (A11) is reissued and countersigned. This keeps a signed update from silently widening the agent's authority.
+
+
+
+7. DECOMPOSE and execution semantics
+7.1 DECOMPOSE
+Given a selected plan p, DECOMPOSE resolves p's step tree. It is deterministic and lazy: a PlanStep is resolved when execution reaches it, and the full expansion is never materialised. Memory is bounded by at most D_invoke call frames, each holding at most K_size nodes.
+Lazy expansion matters because the expanded tree can be far larger than exec(p). Dead branches and loop bodies are counted once in the tree but never all executed.
+7.2 Execution
+Execution interprets the step tree:
+Node
+Behavior
+ActionStep
+One sub-task
+PlanStep
+Resolve the callee, execute its steps, within D_invoke
+ConditionalStep
+Evaluate π when the step is reached, on the current state, and execute the selected branch
+LoopStep
+Evaluate π when reached, and again before each iteration, at most max_n times
+Every sub-task:
+1.  Reads its declared state projection (A4 §5.1).
+2.  Executes (A1 FSM).
+3.  Verifies (A5).
+4.  Commits or refuses.
+5.  Logs (A7).
+Predicates are evaluated when reached, not at DECOMPOSE time. v1.0 evaluated them once against the starting state, which becomes stale after the first committed action.
+7.3 Bound
+In any run, the number of sub-task attempts is at most (1 + ρ(p)) × exec(p), where ρ(p) is the retry budget (§8).
+
+
+
+8. Failure and rollback
+8.1 Failure modes
+Failure
+Cause
+Response
+Sub-task refused
+VERIFY fails
+Apply the plan's failure policy
+Sub-task timeout
+T-AET exceeded
+0x-BUDGET-EXCEEDED
+Invariant violated
+State left I
+0x-UNSAFE-ACT, halt
+Precondition unmet
+State drifted
+0x-AMBIG-GOAL, refuse the plan
+8.2 Failure policy
+FailurePolicy ::=
+  | Halt                 -- stop, log, refuse
+  | Retry(n)             -- retry the sub-task, using the plan's retry budget
+  | RollbackTo(step)     -- return to a checkpoint, using the plan's retry budget
+  | Skip                 -- continue (dangerous, discouraged)
+• The default policy is Halt. Every override is declared and auditable.
+• Every Retry and every RollbackTo consumes one unit of the plan's retry budget ρ(p). When ρ(p) is exhausted, the plan halts.
+• A re-attempt re-executes at most exec(p) actions. So a run executes at most (1 + ρ(p)) × exec(p) actions and costs at most (1 + ρ(p)) × cost(p), which ADM-6 checks against budget(p).
+• Skip is allowed only where declared, and every use is logged.
+8.3 Rollback
+Rollback restores state to a checkpoint recorded in the append-only log (A7). Rollback is itself an action with its own envelope, and it must pass VERIFY. If the state at the checkpoint was in the invariant set I, rollback preserves I.
+
+
+
+9. What A3 bounds and what it does not
+A3 bounds: the shape of a plan, the actions a run can execute, the cycles it can consume, the invocation depth, and the memory DECOMPOSE needs. It also guarantees that no plan is created at runtime.
+A3 does not bound harm. A plan of at most K_exec actions is short, not safe. Harm is limited by four other things:
+1.  The action library A2: an unlisted action cannot run.
+2.  The VERIFY gate A5 and the invariants of A4: an unsafe step is refused.
+3.  The content of P as approved at the Friday session.
+4.  Semantic verification of plans over all reachable runs (trajectory predicates, hazard matrix). This is not yet specified and belongs with A5 and the Verifiable Agency Theorem's model checking.
+A3 also assumes mediation is complete. "The agent cannot invent a plan" holds only if no execution path bypasses DECOMPOSE and VERIFY. That completeness condition is outside A3.
+The trust root remains. The humans who author P, and the authority that signs it, are the unverified anchors.
+Fix
+How A3 contributes
+Fix 1 (Architecture)
+Every conforming implementation has the same plan schema, admission checks and semantics
+Fix 2 (Behavior)
+The content of P is the deployment's. Automotive plans differ from grid plans. Same grammar, different libraries
+Fix 3 (Safety)
+A3 delivers H2: bounded worst-case executed actions, enforced at admission
+
+
+
+10. What A3 does not specify
+Item
+Status
+Concrete plan content per domain
+Deployment responsibility
+Concrete failure policies per plan
+Deployment responsibility
+Values of the standard constants
+Recommended values given, deployments may tighten
+Plan authoring workflow
+Not yet specified
+Structural admission checks
+Specified here (ADM-1 to ADM-8)
+Semantic plan verification
+Not yet specified
+Machine-checked TLA+ plan model
+Pending
+Reference implementation
+Not yet
+A3 specifies the form. Deployment specifies the content.
+
+
+
+11. TLA+ skeleton
+This skeleton states the admission obligation for a concrete library. It has not yet been run through TLC. The argument for all libraries is the proof in §5.1. Two limits: the fuel bound combines nesting depths, so D_cond is checked by ADM-3 rather than by this module, and the encoding is a flat node table because TLA+ has no recursive record types.
+---------------------------- MODULE STT1024_A3_Plans ----------------------------
+EXTENDS Naturals, Sequences, FiniteSets
+
+CONSTANTS
+    A, P, Node,            \* finite sets: action ids, plan ids, node ids
+    Kind,                  \* [Node -> {"action", "plan", "cond", "loop"}]
+    Act,                   \* [Node -> A]        used when Kind = "action"
+    Callee,                \* [Node -> P]        used when Kind = "plan"
+    Then, Else, Body,      \* [Node -> Seq(Node)]  cond branches, loop body
+    MaxN,                  \* [Node -> Nat]      loop bound
+    Root,                  \* [P -> Seq(Node)]   top-level steps of each plan
+    Owned,                 \* [P -> SUBSET Node] every node inside plan p, nested included
+    ActCost,               \* [A -> Nat]
+    Budget,                \* [P -> Nat]
+    Rho,                   \* [P -> Nat]         retry budget
+    K_size, K_exec, D_invoke, D_cond, BudgetMax, RhoMax
+
+ASSUME /\ IsFiniteSet(A) /\ IsFiniteSet(P) /\ IsFiniteSet(Node)
+       /\ K_size \in Nat /\ K_exec \in Nat
+       /\ D_invoke \in Nat /\ D_cond \in Nat
+       /\ BudgetMax \in Nat /\ RhoMax \in Nat
+       /\ Kind \in [Node -> {"action", "plan", "cond", "loop"}]
+
+F == (D_invoke + 1) * (D_cond + 1) + 1       \* recursion fuel
+
+RECURSIVE Exec(_, _), ExecSeq(_, _)
+Exec(n, f) ==
+    IF f = 0 THEN K_exec + 1                  \* fuel exhausted counts as a violation
+    ELSE CASE Kind[n] = "action" -> 1
+           [] Kind[n] = "plan"   -> ExecSeq(Root[Callee[n]], f - 1)
+           [] Kind[n] = "cond"   ->
+                LET t == ExecSeq(Then[n], f - 1)
+                    e == ExecSeq(Else[n], f - 1)
+                IN  IF t >= e THEN t ELSE e
+           [] Kind[n] = "loop"   -> MaxN[n] * ExecSeq(Body[n], f - 1)
+ExecSeq(s, f) ==
+    IF s = << >> THEN 0 ELSE Exec(Head(s), f) + ExecSeq(Tail(s), f)
+
+RECURSIVE Cst(_, _), CstSeq(_, _)
+Cst(n, f) ==
+    IF f = 0 THEN BudgetMax + 1
+    ELSE CASE Kind[n] = "action" -> ActCost[Act[n]]
+           [] Kind[n] = "plan"   -> CstSeq(Root[Callee[n]], f - 1)
+           [] Kind[n] = "cond"   ->
+                LET t == CstSeq(Then[n], f - 1)
+                    e == CstSeq(Else[n], f - 1)
+                IN  IF t >= e THEN t ELSE e
+           [] Kind[n] = "loop"   -> MaxN[n] * CstSeq(Body[n], f - 1)
+CstSeq(s, f) ==
+    IF s = << >> THEN 0 ELSE Cst(Head(s), f) + CstSeq(Tail(s), f)
+
+RECURSIVE Size(_, _), SizeSeq(_, _)
+Size(n, f) ==
+    IF f = 0 THEN K_size + 1
+    ELSE 1 + (CASE Kind[n] = "cond" -> SizeSeq(Then[n], f - 1) + SizeSeq(Else[n], f - 1)
+                [] Kind[n] = "loop" -> SizeSeq(Body[n], f - 1)
+                [] OTHER            -> 0)
+SizeSeq(s, f) ==
+    IF s = << >> THEN 0 ELSE Size(Head(s), f) + SizeSeq(Tail(s), f)
+
+\* ADM-2: acyclic invocation graph of depth at most D_invoke,
+\* equivalent to the existence of a strictly decreasing rank function.
+DagWithDepth ==
+    \E rank \in [P -> 0..D_invoke] :
+        \A p \in P : \A m \in Owned[p] :
+            Kind[m] = "plan" => rank[Callee[m]] < rank[p]
+
+\* ADM-4 to ADM-6
+Admitted(p) ==
+    /\ SizeSeq(Root[p], F) <= K_size
+    /\ ExecSeq(Root[p], F) <= K_exec
+    /\ (1 + Rho[p]) * CstSeq(Root[p], F) <= Budget[p]
+    /\ Rho[p] <= RhoMax
+    /\ Budget[p] <= BudgetMax
+
+Theorem_A3 == DagWithDepth /\ \A p \in P : Admitted(p)
+=============================================================================
+Theorem_A3 is what TLC checks for a concrete library at burn time. It does not need runtime model-checking.
+12. Conclusion
+A3 defines the plan representation that DECOMPOSE produces and EXECUTE consumes. Together with A4 it supplies the premises H2 and H3 of the Verifiable Agency Theorem.
+The commitments:
+1.  Plans are finite and acyclic. By construction.
+2.  Plans are bounded in three declared senses: size, worst-case executed actions, and worst-case cost, enforced at admission.
+3.  Plans compose at authoring time only, never at runtime.
+4.  Plan updates cannot silently widen authority.
+What remains open is semantic: whether the admitted plans are safe over every run they allow.
+Appendix A: Plain language
+What is a plan? A recipe: a bounded sequence of steps to get from here to there.
+Who writes the recipes? The people who deploy the agent. They burn them into ROM after a set of mechanical checks.
+Can the agent invent a new recipe? No. It selects from the ones burned in.
+What if no recipe fits? It refuses with 0x-AMBIG-GOAL.
+What if a step fails? The plan declares a failure policy. Retries share a small fixed budget, and when it is spent the plan halts.
+Does a short plan mean a safe plan? No. A short plan is a bounded plan. Safety comes from the actions it can use, the checks every step passes, and whoever approved the recipe.
+Appendix B: Status
+Artifact
+Status
+A3 specification (this document)
+v1.1 drafted
+Structural admission checks
+Specified (ADM-1 to ADM-8)
+Bounded-execution proposition
+Paper proof (§5.1)
+TLA+ plan model
+Rewritten, not yet run through TLC
+Semantic plan verification
+Not yet specified
+Reference implementation
+Not yet
+Hardware validation
+Not yet
+License: Apache-2.0. Free for all. Forever.
+
+END OF A3
+
+---
