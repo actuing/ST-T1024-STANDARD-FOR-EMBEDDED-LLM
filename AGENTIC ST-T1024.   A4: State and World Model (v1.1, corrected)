@@ -1,1 +1,381 @@
 
+
+
+
+
+
+A4: State and World Model (v1.1, corrected)
+
+Agentic ST-T1024. The load-bearing premise.
+Version: 1.1 (Draft). Supersedes 1.0. Date: November 2026 (v1.0: September 2026) Author: M. Taalabi (via ST-T1024 LLM-DIPLOMAT) License: Apache-2.0 Parent spec: ST-T1024-A0 (Agentic Extension Overview) Prerequisites: A0 (Extending ST-T1024 to be agentic: safety as guarantee) and the Verifiable Agency Theorem, both in the repository. Status: Specification. Not yet implemented. The TLA+ skeleton has not yet been model-checked. Purpose: Define the state representation and world interface that the agentic extension requires.
+
+
+
+Abstract
+The Verifiable Agency Theorem assumes a finite state space S and a finite input alphabet Σ. A0 specifies neither. This document does.
+Without A4, VERIFY has nothing to verify: preconditions are predicates over state, and if state is undefined, so are preconditions. The append-only log has nothing to record, and the plan library has no world to plan against.
+A4 defines:
+1.  The state schema: what a state is and why it is finite.
+2.  The world model: how external reality maps into internal state, with plausibility checks on every sensor.
+3.  The sensor interface: how inputs are conditioned, quantized and delivered.
+4.  The transition function: how state changes deterministically, including a safe mode.
+5.  The state access protocol: how tiles read and write state.
+6.  The invariant set: what must always hold, split into internal and world-facing parts.
+7.  Model fidelity: what A4's guarantees cover and what they do not.
+What changed from v1.0
+#
+v1.0
+v1.1
+1
+Σ defined as transition pairs in the text but as reading vectors in the TLA+. Bound ∏|Dᵢ|²
+Σ is the set of sampled reading vectors, one per sensor per cycle. Bound ∏|Dᵢ| (§4.1)
+2
+Invariants such as "brake pressure never exceeds safe bounds" were stated over the world, which δ cannot control, so Preservation could fail for a bad reading
+World-facing conditions are guarded by a safe mode. Invariants split into internal and world-facing parts (§6)
+3
+"Can be exhaustively verified by finite model-checking"
+Verification is an inductive-invariant check by symbolic methods. No enumeration of S is claimed (§6.4)
+4
+"The agent cannot be uncertain about its own state" and "Is that safe? Yes"
+Uncertainty about the world is representable as a value. Guarantees hold relative to the model (§7, §8)
+5
+Fault values only, with no detection mechanism specified
+Plausibility, staleness and redundancy checks per sensor (§3.2, §3.4)
+6
+Synchronous sampling with no latency bound
+Reaction-latency requirement and a declared hardware fail-safe path (§4.3)
+7
+Context hash integrity assumed
+Collision resistance of H stated as an assumption (§5.4)
+8
+TLA+ skeleton: unbounded memory, arbitrary δ, invalid syntax, inconsistent Σ
+Rewritten with bounded memory, a constant operator δ, an inductive check, and Σ matching §4.1 (§10)
+9
+Theorem assumptions labelled A2, A3, A4
+A4 supplies hypothesis H3 (§1.2)
+
+
+1. Introduction: why state comes first
+1.1 The dependency chain
+State (A4)
+ ├── VERIFY (A5): preconditions are predicates over state
+ ├── Plans (A3): plans read and write state
+ ├── Actions (A2): action effects are state changes
+ ├── Invocation (A6): the context hash is a state projection
+ ├── Memory (A7): log entries record state deltas
+ └── Composition (A8): sub-task sequencing depends on state
+Remove A4 and every other sub-spec becomes undefined.
+1.2 Hypothesis H3
+The Verifiable Agency Theorem names three hypotheses: H1 (finite action library, A2), H2 (finite plan library with bounded plans, A3) and H3. A4 supplies H3:
+H3. The state space S and the input alphabet Σ are finite, and the transition function δ : S × Σ → S is a total, deterministic function.
+A4 must deliver finiteness and determinism by constructing a finite representation of reality, not by hoping reality is finite.
+1.3 Design principle
+The state is not the world. The state is a finite, quantized, deterministic projection of the world, sufficient for the agent's declared task domain and no larger.
+Safety-critical systems already work this way. A flight controller models airspeed, altitude, attitude and a bounded set of environmental inputs, quantized to the precision certified control requires. A4 generalizes that discipline. It also inherits the discipline's limit: the controller is only as good as its model, which §7 and §8 make explicit.
+2. State schema
+2.1 Definition 1 (State)
+A state s ∈ S is a tuple:
+s = ⟨ s_mode, s_ctx, s_world, s_mem, s_meta ⟩
+Component
+Description
+Bound
+s_mode
+FSM state (IDLE, PLAN, EXECUTE, VERIFY, SAFE, …)
+|M| states, M finite
+s_ctx
+Active tile context (which tile, which task)
+|T| × |TaskID|
+s_world
+Quantized world model (sensor state)
+Product of sensor domains
+s_mem
+Bounded window of recent log entries
+At most W entries
+s_meta
+Metadata (cycle counter, flags)
+Bounded integers
+Every component is drawn from a finite domain. Their product is S. The mode set M contains a distinguished SAFE mode (§4.4, §6).
+2.2 Proposition (finiteness)
+|S| < ∞.
+Proof. Each component has a finite domain: s_mode by A1 (finitely many FSM states), s_ctx by A6 (finite tile set, finite task id space), s_world by §3 (sensors are quantized), s_mem by A7 (window of at most W entries over a finite entry set), s_meta by bounded integer ranges. A finite Cartesian product of finite sets is finite. □
+|S| is finite but may be very large. The proposition claims finiteness only. Verification does not enumerate S (§6.4).
+2.3 The state is total
+Every field is always defined. There is no null state and no partial state. When a sensor fails or its reading is unusable, that is a value in its domain (§3.4), not an absence.
+This makes the state total. It does not make the agent omniscient. The agent can be wrong about the world, or unsure of it, and the model represents that as explicit values (FAULT, STALE, IMPLAUSIBLE). What cannot happen is an undefined state.
+3. World model
+3.1 Definition 2 (World model)
+The world model s_world is a tuple of quantized sensor readings:
+s_world = ⟨ r_1, r_2, …, r_n ⟩,   r_i ∈ D_i
+where each D_i is a finite domain declared in the sensor's schema.
+3.2 Sensor schema
+Every sensor has a declared schema. A sensor without one is not admitted.
+Field
+Meaning
+Example (automotive brake sensor)
+id
+Sensor identifier
+BRAKE_PRESSURE
+domain
+Finite value set, including reserved values
+0..250 (kPa/10), plus FAULT, STALE, IMPLAUSIBLE
+rate
+Max update rate
+100 Hz
+latency
+Max delivery latency
+1 ms
+plausibility
+Range and max rate-of-change
+0..250, at most 40 per cycle
+staleness
+Cycles after which an unrefreshed reading is STALE
+3
+redundancy
+Group of sensors cross-checked against this one
+BRAKE_PRESSURE_B
+fault_value
+Value on detected failure
+FAULT
+3.3 Proposition (world finiteness)
+|s_world| < ∞. Proof. Each D_i is finite by declaration, and the number of sensors n is finite and declared. A finite product of finite sets is finite. □
+Design constraint: the sensor set is declared at design time. There is no dynamic sensor discovery.
+3.4 Fault and plausibility handling
+A reading enters the world model only through input conditioning (§4.2), which applies the schema's checks in a fixed order:
+1.  Range and rate: a reading outside the declared range or rate-of-change becomes IMPLAUSIBLE.
+2.  Staleness: a reading not refreshed within the declared window becomes STALE.
+3.  Redundancy: where a redundancy group is declared, disagreement beyond a declared tolerance sets all members to IMPLAUSIBLE.
+4.  Failure: a sensor reporting failure takes its fault_value.
+Downstream logic treats these as ordinary values, so the same fault always produces the same state. Only detected faults take reserved values. A wrong reading that passes every check is a valid value, and that residual is named in §8.
+4. Sensor interface
+4.1 Definition 3 (Input alphabet)
+Σ is the set of sampled reading vectors, one reading per sensor per cycle:
+Σ = D_1 × D_2 × … × D_n
+|Σ| = ∏ |D_i|
+A transition is the pair (s, σ), so the change from one reading to the next is carried by s and σ together and needs no separate alphabet of transitions. This replaces the v1.0 bound ∏|Dᵢ|², which counted pairs and did not match the formal model.
+4.2 Input conditioning
+Raw sensor values become σ through a conditioning function declared per deployment:
+σ_t = cond(raw_t, s_world at t-1)
+conditioning is deterministic and total. It applies quantization, rate limits, hysteresis, relevance filters and the checks of §3.4. It uses exact integer arithmetic, so it is bit-identical across platforms.
+4.3 Sampling discipline and reaction latency
+Sensors are sampled at declared rates, synchronously with the FSM cycle. No asynchronous interrupt may change S. This removes race conditions and nondeterministic interleaving, so the transition is always s' = δ(s, σ) for the σ sampled that cycle.
+The price is latency. For every hazard that needs a timed reaction, the deployment declares T_react and shows:
+sensor_latency + T_cycle + AET  ≤  T_react
+A hardware fail-safe path that never touches S (a watchdog, a hardwired stop, a power gate) is permitted. It is not governed by A4. The deployment declares it in its safety case.
+4.4 Definition 4 (Transition)
+δ : S × Σ → S,    s_{t+1} = δ(s_t, σ_t)
+Property
+Meaning
+Deterministic
+δ is a function, not a relation
+Total
+δ is defined for every (s, σ) in S × Σ
+Bounded
+Every transition completes within the FSM cycle budget
+Guarded
+A transition that would leave the invariant set I is not committed. The agent enters SAFE and emits 0x-UNSAFE-ACT
+The guard is constructed as follows. Let step(s, σ) be the FSM step applied to s with its world replaced by σ, including every write mediated by VERIFY (§5.2). Let safe(s, σ) be s with mode set to SAFE and world set to σ. Then:
+δ(s, σ) = step(s, σ)   if step(s, σ) ∈ I
+          safe(s, σ)   otherwise
+5. State access protocol
+5.1 Read access
+Tiles read state through a read-only projection. Each tile declares the fields it needs:
+Tile_Read_Scope(tile_id) ⊆ { fields of S }
+A tile cannot read outside its scope. This is the isolation property (A6) applied to state.
+5.2 Write access
+No tile writes state directly. A tile proposes a transition, and VERIFY (A5) checks it against declared preconditions, envelope bounds and the invariant set. Only after PASS does the transition commit.
+propose_transition : S × Tile → (S → S)
+5.3 The state log
+Every committed transition is recorded in the append-only log (A7):
+Entry = ⟨ timestamp, prev_state_hash, transition_id, next_state_hash, signature ⟩
+The log is the agent's complete history. It is auditable, reproducible and signed. Transitions into SAFE are logged like any other.
+5.4 Context hashing (for A6)
+For tile invocation, the invoker provides:
+ctx_hash = H(s_world_projection, s_ctx)
+The invoked tile recomputes the hash and checks that it matches. This integrity check assumes H is collision-resistant (SHA-256 or a ternary-compatible equivalent). If H is broken, the check proves nothing, so the choice of H belongs in the deployment's declared trust base.
+6. Invariants
+6.1 Definition 5 (Invariant set)
+Two kinds of condition must hold, and they are different in kind.
+• Φ_int constrains the agent's own state: mode, context, memory window, metadata. The agent controls these, so δ can preserve them.
+• Φ_world constrains the world-facing reading, for example "brake pressure is within safe bounds". The agent does not control the world, so δ cannot preserve Φ_world. It can only respond when it fails.
+The invariant set is:
+I = { s ∈ S : Φ_int(s)  and  ( Φ_world(s)  or  s_mode = SAFE ) }
+So a reading that breaks Φ_world is allowed to occur, and the invariant says what the agent must do when it does: be in SAFE.
+6.2 Requirements
+s0 ∈ I                                    (initial states lie in I)
+∀ s ∈ I, σ ∈ Σ :  δ(s, σ) ∈ I          (Preservation)
+The guarded construction of §4.4 gives Preservation provided one local obligation holds:
+Safe-state closure (SC). For every s ∈ I and σ ∈ Σ, Φ_int(safe(s, σ)) holds.
+Proof of Preservation under SC. If step(s, σ) ∈ I, then δ(s, σ) = step(s, σ) ∈ I. Otherwise δ(s, σ) = safe(s, σ). That state has mode SAFE, so it lies in I exactly when Φ_int holds, which SC supplies. □
+SC is a one-line check on the deployment: moving to SAFE and swapping in the new reading must not break an internal invariant.
+6.3 The invariant catalog
+Each deployment declares its invariants in ROM, and VERIFY checks them.
+Invariant
+Kind
+Meaning
+I_bounded
+Internal
+Cycle counter never exceeds T_max
+I_no_overflow
+Internal
+All integer fields stay in declared ranges
+I_envelope
+Internal
+No action is committed outside its envelope
+I_safe
+World-facing
+If brake pressure is outside safe bounds, mode is SAFE
+A transition that would violate an invariant is refused with 0x-UNSAFE-ACT.
+6.4 Verification
+Preservation is verified as an inductive invariant: show that I contains the initial states and that δ maps I into I, using symbolic methods (SAT/SMT, BDDs). This reasons about δ over all of S without listing S. A4 does not claim exhaustive enumeration, which is infeasible for any realistic number of sensors. Trace properties, which A5 and A10 need, are checked by bounded or symbolic model checking over windows of length W.
+7. What A4 guarantees, and relative to what
+A4's guarantees are guarantees about the model.
+A4 establishes
+A4 does not establish
+The state is finite, total and deterministic
+The state matches the world
+δ preserves I, given SC and a correct δ
+The declared invariants cover every real hazard
+Detected sensor faults become explicit values
+A wrong reading that passes all checks is caught
+Every committed write passed VERIFY
+The sensor schemas and quantization are adequate
+The brake-wear case in the white paper works because wear is a field of S. A hazard that has no field, or that no invariant or trajectory predicate covers, is invisible to every proof built on A4.
+8. Model fidelity and hazard coverage
+Fidelity is a deployment obligation. Each deployment declares:
+1.  Sensor fidelity. The quantization error and plausibility rules of every sensor, and the redundancy where hazards demand it.
+2.  A hazard list. Each hazard from the deployment's hazard analysis is entered with the state fields that observe it and the invariant or trajectory predicate that detects it.
+3.  A residual register. Any hazard with no covering field or predicate is listed as a residual and accepted, in writing, by the named signers.
+Undetected sensor faults, spoofed sensors and unmodeled variables remain residuals. A4 makes them explicit and auditable. It does not remove them.
+9. What A4 does not specify
+Item
+Status
+Sensor schemas for each domain
+Deployment responsibility
+Invariant sets, Φ_int and Φ_world
+Deployment responsibility
+Hazard list and residual register
+Deployment responsibility
+The hash function H
+Implementation choice, collision-resistant
+SRAM window size W
+Deployment-tunable, bounded
+Rate limits, hysteresis and relevance filters
+Deployment-tunable
+Conditions for leaving SAFE
+Deployment responsibility. No autonomous exit unless declared
+Machine-checked TLA+ state model
+Pending
+Reference implementation
+Not yet
+A4 specifies the form. Deployment specifies the content.
+Fix
+How A4 contributes
+Fix 1 (Architecture)
+Two engineers following A4 produce structurally identical state models
+Fix 2 (Behavior)
+Domains, invariants and sensor schemas are the deployment's. Same grammar, different content
+Fix 3 (Safety)
+A4 supplies H3. Without it the theorem has no premises
+10. TLA+ skeleton
+This skeleton states the verification obligation for a deployment. It has not yet been run through a model checker. Preservation quantifies over all of I, so it needs a symbolic checker such as Apalache. TLC can check Safety on a small instance.
+------------------------------ MODULE STT1024_A4_State ------------------------------
+EXTENDS Naturals, Sequences, FiniteSets
+
+CONSTANTS
+    M, SAFE,              \* finite set of FSM modes, and the safe mode
+    T, TaskID,            \* finite sets: tiles, task ids
+    Sensors,              \* finite set of declared sensors
+    Domain,               \* [Sensors -> SUBSET Nat], each finite
+    FaultVal,             \* [Sensors -> Nat], the reserved fault value
+    Entry,                \* finite set of log-window entries
+    W, MaxCycle,          \* memory window size, cycle bound
+    Init0,                \* set of initial states
+    TCycle, AET, TReact,  \* timing, in the same unit
+    Delta(_, _),          \* deployment-supplied transition
+    PhiInt(_),            \* internal invariant over a state
+    PhiWorld(_)           \* world-safety predicate over a state
+
+ASSUME /\ IsFiniteSet(M) /\ SAFE \in M
+       /\ IsFiniteSet(T) /\ IsFiniteSet(TaskID) /\ IsFiniteSet(Sensors)
+       /\ IsFiniteSet(Entry) /\ W \in Nat /\ MaxCycle \in Nat
+       /\ \A s \in Sensors : IsFiniteSet(Domain[s]) /\ FaultVal[s] \in Domain[s]
+       /\ TCycle + AET <= TReact
+
+BSeq(S, n) == UNION { [1..k -> S] : k \in 0..n }
+
+WorldSet == { f \in [Sensors -> UNION { Domain[s] : s \in Sensors }] :
+                \A s \in Sensors : f[s] \in Domain[s] }
+
+State == [ mode  : M,
+           tile  : T,
+           task  : TaskID,
+           world : WorldSet,
+           mem   : BSeq(Entry, W),
+           cycle : 0..MaxCycle ]
+
+Sigma == WorldSet                      \* one reading per sensor per cycle (§4.1)
+
+InvSet == { s \in State : PhiInt(s) /\ (PhiWorld(s) \/ s.mode = SAFE) }
+
+SafeStep(s, sg) == [s EXCEPT !.mode = SAFE, !.world = sg]
+
+\* Obligations on the deployment-supplied operators
+ASSUME DeltaTotal  == \A s \in State, sg \in Sigma : Delta(s, sg) \in State
+ASSUME SafeClosure == \A s \in InvSet, sg \in Sigma : PhiInt(SafeStep(s, sg))
+
+VARIABLE st
+
+Init == st \in Init0
+Next == \E sg \in Sigma : st' = Delta(st, sg)
+Spec == Init /\ [][Next]_st
+
+InitInInv    == Init0 \subseteq InvSet
+Preservation == \A s \in InvSet, sg \in Sigma : Delta(s, sg) \in InvSet
+Safety       == [](st \in InvSet)
+
+THEOREM Spec => Safety      \* follows from InitInInv and Preservation
+=======================================================================================
+The theorem follows from InitInInv and Preservation by induction on the run. Those two are what must be checked for a concrete deployment.
+11. Conclusion
+A4 defines the state representation and world interface that the agentic extension requires. Without it the Verifiable Agency Theorem has no premises, VERIFY has no object, and the log has no content.
+The commitments:
+1.  State is finite, by construction.
+2.  State is deterministic: transitions are functions, not relations.
+3.  State is total: faults and doubt are values, not absences.
+4.  Unsafe transitions are not committed: the agent enters SAFE.
+5.  The guarantees are relative to the model, and the model's gaps are declared.
+A3 sits on top of A4. A5 checks predicates over A4 state. A7 logs A4 transitions.
+Appendix A: Plain language
+What is the state of an AI agent? Everything it knows about itself and the world, right now, in one place.
+Why does it have to be finite? So you can prove what it will do next.
+How do you make it finite? You quantize the world. Sensors have a fixed set of values. Numbers have bounds.
+But the world is infinite. The world is. The agent's model of it is not. The model is a finite projection: enough for the task, and no more.
+Can the agent be unsure? About the world, yes: a reading can be marked faulty, stale or implausible, and the agent treats that as a fact. What it cannot be is in an undefined state.
+What if the world goes somewhere dangerous? The agent cannot stop the world. It moves to a safe mode, refuses to act, and logs it.
+Is that safe? Safe relative to the model. If the model leaves out a hazard, or a sensor lies convincingly, no proof built on the model can see it. That is why every deployment lists its hazards and the ones it has not covered.
+What is this called? A4: the state and world model.
+Appendix B: Status
+Artifact
+Status
+A4 specification (this document)
+v1.1 drafted
+Concrete sensor schemas
+Deployment responsibility
+Concrete invariant sets
+Deployment responsibility
+Hazard list and residual register
+Deployment responsibility
+TLA+ state model
+Rewritten, not yet checked
+Inductive-invariant proof
+Not yet
+Reference implementation
+Not yet
+Hardware validation
+Not yet
+License: Apache-2.0. Free for all. Forever.
+
+
+END OF A4
+
+
